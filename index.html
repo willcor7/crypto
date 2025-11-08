@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Dashboard - Analyse Fondamentale</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <div class="logo">
+            <h2>🚀 Crypto Dashboard</h2>
+            <p class="subtitle">Analyse Fondamentale</p>
+        </div>
+
+        <nav class="nav-menu">
+            <a href="#" class="nav-item active" data-page="scanner">
+                <span class="icon">📊</span>
+                <span>Scanner d'Opportunités</span>
+            </a>
+            <a href="#" class="nav-item" data-page="analysis">
+                <span class="icon">🔍</span>
+                <span>Analyse Détaillée</span>
+            </a>
+            <a href="#" class="nav-item" data-page="portfolio">
+                <span class="icon">💼</span>
+                <span>Mon Portfolio</span>
+            </a>
+            <a href="#" class="nav-item" data-page="signals">
+                <span class="icon">📡</span>
+                <span>Signaux & Alertes</span>
+            </a>
+            <a href="#" class="nav-item" data-page="risk">
+                <span class="icon">🛡️</span>
+                <span>Gestion du Risque</span>
+            </a>
+        </nav>
+
+        <div class="market-status">
+            <h3>Market Status</h3>
+            <div class="status-item">
+                <span>BTC Dominance</span>
+                <span class="value">54.2%</span>
+            </div>
+            <div class="status-item">
+                <span>Market Cap</span>
+                <span class="value">$2.1T</span>
+            </div>
+            <div class="status-item">
+                <span>24h Volume</span>
+                <span class="value">$89.5B</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="header">
+            <div class="header-left">
+                <h1 id="page-title">Scanner d'Opportunités</h1>
+                <p id="page-subtitle">Identification automatique des meilleures opportunités crypto</p>
+            </div>
+            <div class="header-right">
+                <div class="search-box">
+                    <input type="text" placeholder="Rechercher une crypto..." id="search-input">
+                </div>
+                <div class="refresh-btn" id="refresh-data">
+                    <span>🔄</span>
+                    <span>Actualiser</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page: Scanner d'Opportunités -->
+        <div id="page-scanner" class="page-content active">
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon success">📈</div>
+                    <div class="stat-info">
+                        <h3>Opportunités Actives</h3>
+                        <p class="stat-value" id="active-opportunities">15</p>
+                        <p class="stat-change positive">+3 cette semaine</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon warning">⚡</div>
+                    <div class="stat-info">
+                        <h3>Signaux STRONG BUY</h3>
+                        <p class="stat-value" id="strong-buy-signals">5</p>
+                        <p class="stat-change positive">Score ≥ 80</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon info">🎯</div>
+                    <div class="stat-info">
+                        <h3>Score Moyen</h3>
+                        <p class="stat-value" id="average-score">74.3</p>
+                        <p class="stat-change neutral">Sur 100 points</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon accent">💎</div>
+                    <div class="stat-info">
+                        <h3>Nouveaux Entrants</h3>
+                        <p class="stat-value" id="new-entries">3</p>
+                        <p class="stat-change positive">Dernières 48h</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="filters-section">
+                <div class="filter-group">
+                    <label>Catégorie</label>
+                    <select id="filter-category">
+                        <option value="all">Toutes</option>
+                        <option value="defi">DeFi</option>
+                        <option value="layer1">Layer 1</option>
+                        <option value="layer2">Layer 2</option>
+                        <option value="oracle">Oracle</option>
+                        <option value="gaming">Gaming</option>
+                        <option value="ai">AI</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Market Cap</label>
+                    <select id="filter-mcap">
+                        <option value="all">Toutes</option>
+                        <option value="small">50M - 500M</option>
+                        <option value="medium">500M - 5B</option>
+                        <option value="large">5B - 50B</option>
+                        <option value="mega">50B+</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Score Minimum</label>
+                    <select id="filter-score">
+                        <option value="70">70+ (Toutes opportunités)</option>
+                        <option value="75">75+ (Bonnes)</option>
+                        <option value="80">80+ (Excellentes)</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Signal</label>
+                    <select id="filter-signal">
+                        <option value="all">Tous</option>
+                        <option value="strong-buy">STRONG BUY</option>
+                        <option value="buy">BUY</option>
+                        <option value="hold">HOLD</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Opportunities Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>🎯 Meilleures Opportunités (Score ≥ 70)</h2>
+                    <div class="card-actions">
+                        <button class="btn-secondary" id="export-opportunities">Exporter CSV</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table" id="opportunities-table">
+                        <thead>
+                            <tr>
+                                <th>Crypto</th>
+                                <th>Prix</th>
+                                <th>Tendance 30j</th>
+                                <th>Score</th>
+                                <th>Signal</th>
+                                <th>MVRV</th>
+                                <th>Croissance Addr.</th>
+                                <th>Market Cap</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="opportunities-tbody">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Heatmap -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>🗺️ Heatmap Sectorielle des Opportunités</h2>
+                </div>
+                <div class="chart-container">
+                    <canvas id="heatmap-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- New Entrants -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>✨ Nouveaux Entrants (48 dernières heures)</h2>
+                </div>
+                <div class="new-entrants-grid" id="new-entrants-grid">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Page: Analyse Détaillée -->
+        <div id="page-analysis" class="page-content">
+            <div class="analysis-header">
+                <button class="btn-secondary" id="back-to-scanner">← Retour au Scanner</button>
+                <div class="crypto-title">
+                    <h2 id="analysis-crypto-name">Ethereum</h2>
+                    <span class="crypto-symbol" id="analysis-crypto-symbol">ETH</span>
+                    <span class="score-badge large" id="analysis-score-badge">85</span>
+                </div>
+            </div>
+
+            <div class="analysis-grid">
+                <!-- Valorisation -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>💰 Indicateurs de Valorisation</h3>
+                    </div>
+                    <div class="metrics-list" id="valuation-metrics">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Croissance -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📈 Métriques de Croissance</h3>
+                    </div>
+                    <div class="metrics-list" id="growth-metrics">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Développement -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>⚙️ Indicateurs de Développement</h3>
+                    </div>
+                    <div class="metrics-list" id="dev-metrics">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- On-Chain -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>🔗 Données On-Chain</h3>
+                    </div>
+                    <div class="metrics-list" id="onchain-metrics">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>📊 Évolution du Prix (90 jours)</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="price-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Score Breakdown -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>🎯 Décomposition du Score</h3>
+                </div>
+                <div class="score-breakdown" id="score-breakdown">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Page: Mon Portfolio -->
+        <div id="page-portfolio" class="page-content">
+            <!-- Portfolio Summary -->
+            <div class="portfolio-summary">
+                <div class="card portfolio-value">
+                    <h3>Valeur Totale du Portfolio</h3>
+                    <p class="portfolio-total" id="portfolio-total">$125,450.00</p>
+                    <p class="portfolio-change positive" id="portfolio-change">+$8,340 (+7.12%) 24h</p>
+                </div>
+                <div class="card portfolio-stats">
+                    <div class="stat-row">
+                        <span>Positions</span>
+                        <span id="portfolio-positions">8</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Secteurs</span>
+                        <span id="portfolio-sectors">4</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Score Moyen</span>
+                        <span id="portfolio-avg-score">78.5</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Allocation Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>📊 Allocation par Secteur</h3>
+                </div>
+                <div class="chart-container small">
+                    <canvas id="allocation-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Holdings Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>💼 Positions Détaillées</h2>
+                    <button class="btn-primary" id="add-position">+ Ajouter Position</button>
+                </div>
+                <div class="table-container">
+                    <table class="data-table" id="portfolio-table">
+                        <thead>
+                            <tr>
+                                <th>Crypto</th>
+                                <th>Quantité</th>
+                                <th>Prix Achat</th>
+                                <th>Prix Actuel</th>
+                                <th>Valeur</th>
+                                <th>P&L</th>
+                                <th>Poids</th>
+                                <th>Score</th>
+                                <th>Signal</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="portfolio-tbody">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Correlation Heatmap -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>🔥 Heatmap de Corrélation</h3>
+                    <p class="card-subtitle">Corrélation de prix entre vos positions (30 jours)</p>
+                </div>
+                <div id="correlation-heatmap">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>⚠️ Alertes Portfolio</h3>
+                </div>
+                <div class="alerts-list" id="portfolio-alerts">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Page: Signaux & Alertes -->
+        <div id="page-signals" class="page-content">
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="active-signals">Signaux Actifs</button>
+                <button class="tab-btn" data-tab="signal-history">Historique</button>
+                <button class="tab-btn" data-tab="alert-config">Configuration Alertes</button>
+            </div>
+
+            <!-- Active Signals Tab -->
+            <div id="tab-active-signals" class="tab-content active">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📡 Signaux Actifs (48 dernières heures)</h2>
+                        <div class="signal-legend">
+                            <span class="legend-item strong-buy">STRONG BUY</span>
+                            <span class="legend-item buy">BUY</span>
+                            <span class="legend-item hold">HOLD</span>
+                            <span class="legend-item watch">WATCH</span>
+                            <span class="legend-item sell">SELL</span>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="signals-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Crypto</th>
+                                    <th>Signal</th>
+                                    <th>Type</th>
+                                    <th>Prix Trigger</th>
+                                    <th>Score</th>
+                                    <th>Confiance</th>
+                                    <th>Raison</th>
+                                    <th>Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody id="signals-tbody">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Signal History Tab -->
+            <div id="tab-signal-history" class="tab-content">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📜 Historique des Signaux</h2>
+                        <div class="card-actions">
+                            <select id="history-period">
+                                <option value="7">7 derniers jours</option>
+                                <option value="30">30 derniers jours</option>
+                                <option value="90">90 derniers jours</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="history-stats">
+                        <div class="stat-card">
+                            <h4>Signaux Totaux</h4>
+                            <p class="stat-value">247</p>
+                        </div>
+                        <div class="stat-card">
+                            <h4>Taux de Succès</h4>
+                            <p class="stat-value positive">68.4%</p>
+                        </div>
+                        <div class="stat-card">
+                            <h4>Gain Moyen</h4>
+                            <p class="stat-value positive">+12.3%</p>
+                        </div>
+                        <div class="stat-card">
+                            <h4>Meilleur Signal</h4>
+                            <p class="stat-value">+145%</p>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Crypto</th>
+                                    <th>Signal</th>
+                                    <th>Prix Entry</th>
+                                    <th>Prix Exit</th>
+                                    <th>Durée</th>
+                                    <th>Résultat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-tbody">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alert Configuration Tab -->
+            <div id="tab-alert-config" class="tab-content">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>⚙️ Configuration des Alertes</h2>
+                    </div>
+                    <div class="alert-config-form">
+                        <div class="form-group">
+                            <label>Type d'Alerte</label>
+                            <select id="alert-type">
+                                <option value="score">Score atteint un seuil</option>
+                                <option value="new-opportunity">Nouvelle opportunité (Score ≥70)</option>
+                                <option value="score-drop">Dégradation de score >15 points</option>
+                                <option value="mvrv">MVRV franchit une zone</option>
+                                <option value="sector">Secteur émergent (3+ cryptos Score ≥65)</option>
+                                <option value="volume">Anomalie de volume</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Crypto (optionnel)</label>
+                            <input type="text" id="alert-crypto" placeholder="Laisser vide pour toutes">
+                        </div>
+                        <div class="form-group">
+                            <label>Valeur Seuil</label>
+                            <input type="number" id="alert-threshold" placeholder="ex: 80">
+                        </div>
+                        <div class="form-group">
+                            <label>Notifications</label>
+                            <div class="checkbox-group">
+                                <label><input type="checkbox" checked> Dashboard</label>
+                                <label><input type="checkbox" checked> Email</label>
+                                <label><input type="checkbox"> Push Mobile</label>
+                                <label><input type="checkbox"> Telegram</label>
+                            </div>
+                        </div>
+                        <button class="btn-primary" id="save-alert">Créer Alerte</button>
+                    </div>
+
+                    <div class="active-alerts">
+                        <h3>Alertes Actives</h3>
+                        <div id="active-alerts-list">
+                            <!-- Populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page: Gestion du Risque -->
+        <div id="page-risk" class="page-content">
+            <!-- Position Sizing Calculator -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>📐 Calculateur de Position Sizing</h2>
+                    <p class="card-subtitle">Position Size = (Capital × Risque%) ÷ Distance Stop-Loss</p>
+                </div>
+                <div class="calculator-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Capital Total ($)</label>
+                            <input type="number" id="calc-capital" value="10000">
+                        </div>
+                        <div class="form-group">
+                            <label>Risque par Trade (%)</label>
+                            <input type="number" id="calc-risk" value="1" step="0.1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Prix d'Entrée ($)</label>
+                            <input type="number" id="calc-entry" value="100" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Stop-Loss ($)</label>
+                            <input type="number" id="calc-stoploss" value="95" step="0.01">
+                        </div>
+                    </div>
+                    <button class="btn-primary" id="calculate-position">Calculer</button>
+                </div>
+                <div class="calculation-result" id="calc-result" style="display: none;">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Portfolio Risk Analysis -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>🛡️ Analyse de Risque du Portfolio</h2>
+                </div>
+                <div class="risk-metrics-grid">
+                    <div class="risk-metric">
+                        <h4>Concentration Top 3</h4>
+                        <div class="risk-gauge">
+                            <div class="gauge-value" id="concentration-value">48%</div>
+                            <div class="gauge-bar">
+                                <div class="gauge-fill" id="concentration-fill" style="width: 48%"></div>
+                            </div>
+                            <div class="gauge-label">
+                                <span>Safe</span>
+                                <span class="warning">Warning</span>
+                                <span class="danger">Danger</span>
+                            </div>
+                        </div>
+                        <p class="metric-status success">✅ Bonne diversification</p>
+                    </div>
+
+                    <div class="risk-metric">
+                        <h4>Diversification Sectorielle</h4>
+                        <div class="risk-score" id="sector-diversity">78/100</div>
+                        <p class="metric-status success">✅ 4 secteurs représentés</p>
+                    </div>
+
+                    <div class="risk-metric">
+                        <h4>Value at Risk (VaR 95%)</h4>
+                        <div class="risk-value negative" id="var-value">-$8,450</div>
+                        <p class="metric-status neutral">Perte maximale probable (24h)</p>
+                    </div>
+
+                    <div class="risk-metric">
+                        <h4>Score Moyen Portfolio</h4>
+                        <div class="risk-score success" id="portfolio-avg-score-risk">78.5</div>
+                        <p class="metric-status success">✅ Qualité fondamentale forte</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stress Tests -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>⚠️ Stress Tests</h3>
+                </div>
+                <div class="stress-tests" id="stress-tests">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Recommendations -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>💡 Recommandations</h3>
+                </div>
+                <div class="recommendations-list" id="risk-recommendations">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Risk Allocation Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>📊 Allocation Risque par Actif</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="risk-allocation-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="scoring.js"></script>
+    <script src="charts.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
