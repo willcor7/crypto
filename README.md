@@ -37,17 +37,34 @@ Aucun prérequis ! Le dashboard fonctionne entièrement côté client avec des t
 2. Ouvrez `index.html` dans votre navigateur web moderne (Chrome, Firefox, Safari, Edge)
 3. Le dashboard se charge automatiquement avec des données simulées
 
+### 📡 Activation des Données Réelles (APIs Gratuites)
+
+**Nouveau** : Le dashboard supporte maintenant les **données en temps réel** via des APIs 100% gratuites !
+
+1. Cliquez sur le bouton **"Données Réelles"** dans l'en-tête
+2. Attendez 5-10 secondes le chargement
+3. Le bouton devient vert ✅ et affiche "Données Live"
+
+**APIs gratuites utilisées** :
+- **CoinGecko API** : Prix, market caps, volumes (50 req/min)
+- **GitHub API** : Commits, contributeurs (60 req/heure)
+
+Consultez [API_INTEGRATION.md](./API_INTEGRATION.md) pour tous les détails techniques.
+
 ### Structure des Fichiers
 
 ```
 crypto-dashboard/
-├── index.html          # Structure HTML principale
-├── styles.css          # Styles CSS avec thème dark mode
-├── data.js            # Données simulées et fonctions helper
-├── scoring.js         # Système de scoring sophistiqué
-├── charts.js          # Gestion des graphiques Chart.js
-├── app.js             # Logique applicative et interactivité
-└── README.md          # Cette documentation
+├── index.html              # Structure HTML principale
+├── styles.css              # Styles CSS avec thème dark mode
+├── data.js                 # Données simulées et fonctions helper
+├── scoring.js              # Système de scoring sophistiqué
+├── charts.js               # Gestion des graphiques Chart.js
+├── api.js                  # ✨ NOUVEAU: Intégration APIs gratuites
+├── app-live.js             # ✨ NOUVEAU: Gestion données en temps réel
+├── app.js                  # Logique applicative et interactivité
+├── README.md               # Cette documentation
+└── API_INTEGRATION.md      # ✨ NOUVEAU: Guide d'intégration APIs
 ```
 
 ## 📊 Système de Scoring Détaillé

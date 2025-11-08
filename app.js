@@ -81,14 +81,19 @@ function switchPage(page) {
 
 // ===== MARKET STATUS =====
 function updateMarketStatus() {
-    // Simulate live updates
-    const btcDom = 54.2 + (Math.random() - 0.5) * 0.5;
-    const marketCap = 2.1 + (Math.random() - 0.5) * 0.1;
-    const volume = 89.5 + (Math.random() - 0.5) * 5;
+    // Use live data if enabled, otherwise simulate
+    if (typeof liveDataEnabled !== 'undefined' && liveDataEnabled) {
+        updateLiveMarketStatus();
+    } else {
+        // Simulate live updates
+        const btcDom = 54.2 + (Math.random() - 0.5) * 0.5;
+        const marketCap = 2.1 + (Math.random() - 0.5) * 0.1;
+        const volume = 89.5 + (Math.random() - 0.5) * 5;
 
-    document.querySelectorAll('.status-item .value')[0].textContent = btcDom.toFixed(1) + '%';
-    document.querySelectorAll('.status-item .value')[1].textContent = '$' + marketCap.toFixed(2) + 'T';
-    document.querySelectorAll('.status-item .value')[2].textContent = '$' + volume.toFixed(1) + 'B';
+        document.querySelectorAll('.status-item .value')[0].textContent = btcDom.toFixed(1) + '%';
+        document.querySelectorAll('.status-item .value')[1].textContent = '$' + marketCap.toFixed(2) + 'T';
+        document.querySelectorAll('.status-item .value')[2].textContent = '$' + volume.toFixed(1) + 'B';
+    }
 }
 
 // ===== FILTERS =====
@@ -105,7 +110,12 @@ function applyFilters() {
     const minScore = parseInt(document.getElementById('filter-score').value);
     const signal = document.getElementById('filter-signal').value;
 
-    filteredCryptos = filterCryptos(category, mcap, minScore, signal);
+    // Use live data filter if enabled, otherwise use simulated
+    if (typeof filterCurrentCryptos !== 'undefined') {
+        filteredCryptos = filterCurrentCryptos(category, mcap, minScore, signal);
+    } else {
+        filteredCryptos = filterCryptos(category, mcap, minScore, signal);
+    }
     updateOpportunitiesTable();
 }
 
@@ -123,10 +133,13 @@ function initRefresh() {
 
 // ===== PAGE: SCANNER =====
 function loadScannerPage() {
-    // Update stats
-    const opportunities = getOpportunities(70);
+    // Update stats - use live data if enabled
+    const opportunities = typeof getCurrentOpportunities !== 'undefined' ?
+        getCurrentOpportunities(70) : getOpportunities(70);
+
     const strongBuy = opportunities.filter(c => c.score >= 80).length;
-    const avgScore = opportunities.reduce((sum, c) => sum + c.score, 0) / opportunities.length;
+    const avgScore = opportunities.length > 0 ?
+        opportunities.reduce((sum, c) => sum + c.score, 0) / opportunities.length : 0;
 
     document.getElementById('active-opportunities').textContent = opportunities.length;
     document.getElementById('strong-buy-signals').textContent = strongBuy;
@@ -153,7 +166,8 @@ function updateOpportunitiesTable() {
     const tbody = document.getElementById('opportunities-tbody');
     if (!tbody) return;
 
-    const opportunities = filteredCryptos.length > 0 ? filteredCryptos : getOpportunities(70);
+    const opportunities = filteredCryptos.length > 0 ? filteredCryptos :
+        (typeof getCurrentOpportunities !== 'undefined' ? getCurrentOpportunities(70) : getOpportunities(70));
 
     tbody.innerHTML = opportunities.map((crypto, index) => {
         const scoring = new CryptoScoring(crypto);
@@ -270,7 +284,8 @@ function exportToCSV() {
 
 // ===== PAGE: ANALYSIS =====
 function analyzeCrypto(cryptoId) {
-    selectedCrypto = getCryptoById(cryptoId);
+    selectedCrypto = typeof getCurrentCryptoById !== 'undefined' ?
+        getCurrentCryptoById(cryptoId) : getCryptoById(cryptoId);
     if (!selectedCrypto) return;
 
     switchPage('analysis');
@@ -279,7 +294,8 @@ function analyzeCrypto(cryptoId) {
 
 function loadAnalysisPage() {
     if (!selectedCrypto) {
-        selectedCrypto = getCryptoById('ethereum');
+        selectedCrypto = typeof getCurrentCryptoById !== 'undefined' ?
+            getCurrentCryptoById('ethereum') : getCryptoById('ethereum');
     }
 
     // Update header
