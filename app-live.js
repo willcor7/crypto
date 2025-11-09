@@ -65,7 +65,11 @@ async function loadLiveData() {
     isLoadingLiveData = true;
 
     try {
+        // Show initial progress
+        showProgressBar('Chargement des données...', 0);
+
         // Fetch top 100 cryptos from CoinGecko
+        showProgressBar('Récupération des prix en temps réel...', 20);
         liveCryptoDatabase = await CryptoDataFetcher.fetchTopCryptos(100);
 
         if (!liveCryptoDatabase || liveCryptoDatabase.length === 0) {
@@ -73,6 +77,7 @@ async function loadLiveData() {
         }
 
         // Calculate scores for all cryptos
+        showProgressBar('Calcul des scores fondamentaux...', 50);
         liveCryptoDatabase = liveCryptoDatabase.map(crypto => {
             const scoring = new CryptoScoring(crypto);
             crypto.score = scoring.calculateTotalScore();
@@ -80,7 +85,16 @@ async function loadLiveData() {
         });
 
         // Enrich with GitHub data for top cryptos (async, non-blocking)
+        showProgressBar('Enrichissement avec données GitHub...', 70);
         enrichTopCryptosWithGitHub();
+
+        // Enrich DeFi protocols with real TVL (async, non-blocking)
+        showProgressBar('Chargement des données DeFi TVL...', 85);
+        enrichDefiWithTVL();
+
+        // Complete
+        showProgressBar('Chargement terminé !', 100);
+        setTimeout(hideProgressBar, 800);
 
         console.log(`✅ Loaded ${liveCryptoDatabase.length} live cryptos with scores`);
         isLoadingLiveData = false;
@@ -88,6 +102,7 @@ async function loadLiveData() {
 
     } catch (error) {
         console.error('❌ Error loading live data:', error);
+        hideProgressBar();
         isLoadingLiveData = false;
         return false;
     }
@@ -233,6 +248,35 @@ function showNotification(message, type = 'info') {
     }, 4000);
 }
 
+// ===== PROGRESS BAR =====
+function showProgressBar(message, percent) {
+    let bar = document.getElementById('progress-bar');
+    if (!bar) {
+        console.warn('Progress bar element not found');
+        return;
+    }
+
+    bar.innerHTML = `
+        <div style="text-align: center; padding: 16px; color: white;">
+            <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">${message}</div>
+            <div style="width: 300px; height: 8px; background: rgba(255, 255, 255, 0.1);
+                        border-radius: 4px; margin: 0 auto; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.2);">
+                <div style="width: ${percent}%; height: 100%; background: linear-gradient(90deg, #3b82f6, #06b6d4);
+                           transition: width 0.4s ease; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);"></div>
+            </div>
+            <div style="font-size: 12px; color: rgba(255, 255, 255, 0.7); margin-top: 8px;">${percent}%</div>
+        </div>
+    `;
+    bar.style.display = 'block';
+}
+
+function hideProgressBar() {
+    const bar = document.getElementById('progress-bar');
+    if (bar) {
+        bar.style.display = 'none';
+    }
+}
+
 // Add CSS animation
 const style = document.createElement('style');
 style.textContent = `
@@ -332,6 +376,47 @@ async function startLivePriceUpdates() {
             console.error('❌ Error updating live prices:', error);
         }
     }, 30000);
+}
+
+// ===== DEFI TVL ENRICHMENT =====
+async function enrichDefiWithTVL() {
+    if (!liveDataEnabled) return;
+
+    const defiCryptos = liveCryptoDatabase.filter(c => c.category === 'defi');
+    console.log(`🔄 Enriching ${defiCryptos.length} DeFi protocols with real TVL data...`);
+
+    for (const crypto of defiCryptos) {
+        const defiLlamaSlug = DEFILLAMA_SLUGS[crypto.id];
+        if (defiLlamaSlug) {
+            try {
+                const tvlData = await DefiLlamaAPI.getProtocolTVL(defiLlamaSlug);
+                if (tvlData && tvlData.tvl > 0) {
+                    crypto.tvl = tvlData.tvl;
+                    crypto.tvlChange1d = tvlData.change1d;
+                    crypto.tvlChange7d = tvlData.change7d;
+
+                    // Recalculate score with real TVL
+                    const scoring = new CryptoScoring(crypto);
+                    crypto.score = scoring.calculateTotalScore();
+
+                    console.log(`✅ ${crypto.name}: TVL $${(tvlData.tvl / 1000000000).toFixed(2)}B`);
+                }
+
+                // Delay to respect rate limits
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+            } catch (error) {
+                console.warn(`⚠️ Could not fetch TVL for ${crypto.name}:`, error.message);
+            }
+        }
+    }
+
+    console.log('✅ DeFi TVL enrichment complete');
+
+    // Refresh display if still on scanner page
+    if (currentPage === 'scanner' && liveDataEnabled) {
+        loadScannerPage();
+    }
 }
 
 // ===== INITIALIZATION =====

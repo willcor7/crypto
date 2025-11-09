@@ -131,11 +131,49 @@ function initRefresh() {
     });
 }
 
+// ===== ADAPTIVE THRESHOLD =====
+function getAdaptiveThreshold(cryptos, targetCount = 15, idealThreshold = 70) {
+    if (!cryptos || cryptos.length === 0) return idealThreshold;
+
+    const scores = cryptos.map(c => c.score).sort((a, b) => b - a);
+    const countAboveIdeal = scores.filter(s => s >= idealThreshold).length;
+
+    // If we have enough cryptos above ideal threshold, use it
+    if (countAboveIdeal >= targetCount) {
+        return idealThreshold;
+    }
+
+    // Otherwise, find the threshold that gives us ~targetCount results
+    // But never go below 50
+    if (scores.length >= targetCount) {
+        return Math.max(50, scores[targetCount - 1]);
+    }
+
+    // If we don't have enough cryptos at all, lower threshold significantly
+    return 50;
+}
+
+// ===== RESET FILTERS =====
+function resetFilters() {
+    document.getElementById('filter-category').value = 'all';
+    document.getElementById('filter-mcap').value = 'all';
+    document.getElementById('filter-score').value = '50';
+    document.getElementById('filter-signal').value = 'all';
+    applyFilters();
+}
+
 // ===== PAGE: SCANNER =====
 function loadScannerPage() {
-    // Update stats - use live data if enabled
+    // Get all cryptos
+    const allCryptos = typeof getCurrentDatabase !== 'undefined' ?
+        getCurrentDatabase() : cryptoDatabase;
+
+    // Calculate adaptive threshold
+    const adaptiveThreshold = getAdaptiveThreshold(allCryptos, 15, 70);
+
+    // Update stats - use adaptive threshold
     const opportunities = typeof getCurrentOpportunities !== 'undefined' ?
-        getCurrentOpportunities(70) : getOpportunities(70);
+        getCurrentOpportunities(adaptiveThreshold) : getOpportunities(adaptiveThreshold);
 
     const strongBuy = opportunities.filter(c => c.score >= 80).length;
     const avgScore = opportunities.length > 0 ?
@@ -145,6 +183,11 @@ function loadScannerPage() {
     document.getElementById('strong-buy-signals').textContent = strongBuy;
     document.getElementById('average-score').textContent = avgScore.toFixed(1);
     document.getElementById('new-entries').textContent = newEntrants.length;
+
+    // Display scoring stats if live data enabled
+    if (typeof liveDataEnabled !== 'undefined' && liveDataEnabled) {
+        displayScoringStats(allCryptos);
+    }
 
     // Apply initial filters
     applyFilters();
@@ -162,12 +205,66 @@ function loadScannerPage() {
     document.getElementById('export-opportunities')?.addEventListener('click', exportToCSV);
 }
 
+// ===== DISPLAY SCORING STATS =====
+function displayScoringStats(cryptos) {
+    if (!cryptos || cryptos.length === 0) return;
+
+    const stats = {
+        total: cryptos.length,
+        excellent: cryptos.filter(c => c.score >= 80).length,
+        good: cryptos.filter(c => c.score >= 70 && c.score < 80).length,
+        moderate: cryptos.filter(c => c.score >= 60 && c.score < 70).length,
+        avgScore: (cryptos.reduce((sum, c) => sum + c.score, 0) / cryptos.length).toFixed(1),
+        maxScore: Math.max(...cryptos.map(c => c.score)),
+        minScore: Math.min(...cryptos.map(c => c.score))
+    };
+
+    // Update subtitle with stats
+    const subtitle = document.getElementById('page-subtitle');
+    if (subtitle && currentPage === 'scanner') {
+        subtitle.innerHTML = `
+            📊 ${stats.total} cryptos | Score moyen: ${stats.avgScore} |
+            Range: ${stats.minScore}-${stats.maxScore} |
+            <span style="color: var(--color-success)">Excellentes: ${stats.excellent}</span> |
+            <span style="color: var(--color-info)">Bonnes: ${stats.good}</span> |
+            <span style="color: var(--color-warning)">Modérées: ${stats.moderate}</span>
+        `;
+    }
+}
+
 function updateOpportunitiesTable() {
     const tbody = document.getElementById('opportunities-tbody');
     if (!tbody) return;
 
     const opportunities = filteredCryptos.length > 0 ? filteredCryptos :
         (typeof getCurrentOpportunities !== 'undefined' ? getCurrentOpportunities(70) : getOpportunities(70));
+
+    // Empty state message
+    if (opportunities.length === 0) {
+        const currentScore = parseInt(document.getElementById('filter-score')?.value || '70');
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 60px 40px;">
+                    <div style="font-size: 64px; margin-bottom: 20px; opacity: 0.3;">📊</div>
+                    <h3 style="margin-bottom: 12px; font-size: 22px;">Aucune opportunité trouvée</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 14px; max-width: 500px; margin-left: auto; margin-right: auto;">
+                        ${typeof liveDataEnabled !== 'undefined' && liveDataEnabled ?
+                            `Aucune crypto n'atteint le score minimum de ${currentScore}. Essayez d'abaisser le seuil ou d'ajuster les filtres.` :
+                            'Activez les "Données Réelles" pour voir les opportunités actuelles du marché.'}
+                    </p>
+                    <div style="display: flex; gap: 12px; justify-content: center;">
+                        <button class="btn-primary" onclick="resetFilters()">
+                            🔄 Réinitialiser les Filtres
+                        </button>
+                        ${typeof liveDataEnabled === 'undefined' || !liveDataEnabled ?
+                            '<button class="btn-secondary" onclick="toggleLiveData()">📡 Activer Données Réelles</button>' :
+                            ''}
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
 
     tbody.innerHTML = opportunities.map((crypto, index) => {
         const scoring = new CryptoScoring(crypto);
@@ -221,6 +318,10 @@ function updateOpportunitiesTable() {
                 <td>
                     <button class="btn-primary btn-small" onclick="analyzeCrypto('${crypto.id}')">
                         Analyser
+                    </button>
+                    <button class="btn-secondary btn-small" onclick="showScoringDebug('${crypto.id}')"
+                            style="margin-top: 4px;" title="Voir le détail du scoring">
+                        🔍 Debug
                     </button>
                 </td>
             </tr>
@@ -809,4 +910,80 @@ function loadRiskRecommendations() {
             </div>
         `;
     }).join('');
+}
+
+// ===== DEBUG MODE =====
+function showScoringDebug(cryptoId) {
+    const crypto = typeof getCurrentCryptoById !== 'undefined' ?
+        getCurrentCryptoById(cryptoId) : getCryptoById(cryptoId);
+
+    if (!crypto) {
+        alert('Crypto non trouvée');
+        return;
+    }
+
+    const scoring = new CryptoScoring(crypto);
+    scoring.calculateTotalScore();
+    const breakdown = scoring.getBreakdown();
+    const signal = scoring.getSignal();
+
+    const debugInfo = `
+╔════════════════════════════════════════════════════════════
+║ 🔍 DEBUG SCORING: ${crypto.name} (${crypto.symbol})
+╠════════════════════════════════════════════════════════════
+║ 📊 SCORE TOTAL: ${scoring.total}/100
+║ 🎯 SIGNAL: ${signal.signal} (Confiance: ${signal.confidence.toFixed(1)}%)
+╠════════════════════════════════════════════════════════════
+║ 💰 VALORISATION: ${breakdown.valuation.score}/35 (${breakdown.valuation.percentage}%)
+║    • MVRV Ratio: ${crypto.mvrv.toFixed(2)}
+║      ${crypto.mvrv < 0.7 ? '→ Forte sous-évaluation (20 pts)' :
+         crypto.mvrv < 1.0 ? '→ Sous-évaluation (15 pts)' :
+         crypto.mvrv < 1.5 ? '→ Fair value (10 pts)' :
+         crypto.mvrv < 2.5 ? '→ Surévaluation (5 pts)' : '→ Forte surévaluation (0 pts)'}
+║    • Market Cap: ${formatNumber(crypto.marketCap)}
+${crypto.tvl ? `║    • TVL: ${formatNumber(crypto.tvl)}
+║    • MCap/TVL: ${(crypto.marketCap / crypto.tvl).toFixed(2)}` : ''}
+║
+║ 📈 CROISSANCE: ${breakdown.growth.score}/30 (${breakdown.growth.percentage}%)
+║    • Address Growth (30j): ${crypto.addressGrowth > 0 ? '+' : ''}${crypto.addressGrowth.toFixed(1)}%
+║      ${crypto.addressGrowth > 30 ? '→ Exceptionnelle (20 pts)' :
+         crypto.addressGrowth > 20 ? '→ Forte (16 pts)' :
+         crypto.addressGrowth > 10 ? '→ Bonne (12 pts)' :
+         crypto.addressGrowth > 5 ? '→ Modérée (8 pts)' :
+         crypto.addressGrowth > 0 ? '→ Faible (4 pts)' : '→ Décroissance (0 pts)'}
+║    • Volume 24h: ${formatNumber(crypto.volume24h)}
+║    • Vol/MCap Ratio: ${(crypto.volume24h / crypto.marketCap * 100).toFixed(2)}%
+║
+║ ⚙️ FONDAMENTAUX: ${breakdown.fundamental.score}/25 (${breakdown.fundamental.percentage}%)
+║    • GitHub Commits (90j): ${crypto.githubCommits}
+║      ${crypto.githubCommits > 200 ? '→ Très actif (15 pts)' :
+         crypto.githubCommits > 100 ? '→ Actif (12 pts)' :
+         crypto.githubCommits > 50 ? '→ Modéré (8 pts)' :
+         crypto.githubCommits > 20 ? '→ Faible (4 pts)' : '→ Très faible (0 pts)'}
+║    • Contributors: ${crypto.contributors}
+║      ${crypto.contributors > 80 ? '→ Communauté large (10 pts)' :
+         crypto.contributors > 50 ? '→ Bonne communauté (8 pts)' :
+         crypto.contributors > 30 ? '→ Communauté moyenne (6 pts)' :
+         crypto.contributors > 10 ? '→ Petite communauté (4 pts)' : '→ Très petite (2 pts)'}
+║
+║ ⚡ MOMENTUM: ${breakdown.momentum.score}/10 (${breakdown.momentum.percentage}%)
+║    • Whale Accumulation (7j): +${crypto.whaleAccumulation.toFixed(1)}%
+║      ${crypto.whaleAccumulation > 5 ? '→ Forte accumulation (6 pts)' :
+         crypto.whaleAccumulation > 3 ? '→ Bonne accumulation (4 pts)' :
+         crypto.whaleAccumulation > 1 ? '→ Accumulation modérée (2 pts)' : '→ Faible (0 pts)'}
+║    • Price Change 24h: ${crypto.priceChange24h > 0 ? '+' : ''}${crypto.priceChange24h.toFixed(2)}%
+║      ${crypto.priceChange24h > 10 ? '→ Fort momentum (4 pts)' :
+         crypto.priceChange24h > 5 ? '→ Bon momentum (3 pts)' :
+         crypto.priceChange24h > 0 ? '→ Positif (2 pts)' :
+         crypto.priceChange24h > -5 ? '→ Neutre (1 pt)' : '→ Négatif (0 pts)'}
+╠════════════════════════════════════════════════════════════
+║ 📋 RAISONS DU SIGNAL:
+${signal.reasons.length > 0 ? signal.reasons.map(r => `║    • ${r}`).join('\n') : '║    (Aucune raison spécifique)'}
+╚════════════════════════════════════════════════════════════
+    `.trim();
+
+    console.log(debugInfo);
+
+    // Show modal or alert
+    alert(`Score détaillé pour ${crypto.name}: ${scoring.total}/100\n\nVoir la console (F12) pour les détails complets.`);
 }

@@ -17,6 +17,11 @@ const API_CONFIG = {
         baseUrl: 'https://api.coincap.io/v2',
         rateLimit: 200, // requests per minute
         cache: {}
+    },
+    defillama: {
+        baseUrl: 'https://api.llama.fi',
+        rateLimit: 300, // requests per 5 minutes (very generous)
+        cache: {}
     }
 };
 
@@ -234,6 +239,68 @@ const GITHUB_REPOS = {
     'the-graph': { owner: 'graphprotocol', repo: 'graph-node' }
 };
 
+// ===== DEFILLAMA API =====
+class DefiLlamaAPI {
+    static async getProtocolTVL(protocolSlug) {
+        const cached = getFromCache('defillama', `protocol_${protocolSlug}`);
+        if (cached) return cached;
+
+        try {
+            const url = `https://api.llama.fi/protocol/${protocolSlug}`;
+            const data = await fetchWithRetry(url);
+
+            const tvlData = {
+                tvl: data.tvl || data.chainTvls?.['Ethereum'] || 0,
+                mcaptvl: data.mcaptvl || null,
+                change1d: data.change_1d || 0,
+                change7d: data.change_7d || 0,
+                chainTvls: data.chainTvls || {}
+            };
+
+            setCache('defillama', `protocol_${protocolSlug}`, tvlData);
+            return tvlData;
+        } catch (error) {
+            console.error(`❌ DefiLlama API error for ${protocolSlug}:`, error);
+            return null;
+        }
+    }
+
+    static async getAllProtocols() {
+        const cached = getFromCache('defillama', 'all_protocols');
+        if (cached) return cached;
+
+        try {
+            const url = 'https://api.llama.fi/protocols';
+            const data = await fetchWithRetry(url);
+
+            setCache('defillama', 'all_protocols', data);
+            return data;
+        } catch (error) {
+            console.error('❌ DefiLlama API error:', error);
+            return null;
+        }
+    }
+}
+
+// ===== DEFILLAMA PROTOCOL SLUGS MAPPING =====
+const DEFILLAMA_SLUGS = {
+    'uniswap': 'uniswap',
+    'aave': 'aave',
+    'curve-dao-token': 'curve-dex',
+    'maker': 'makerdao',
+    'lido-dao': 'lido',
+    'compound-governance-token': 'compound',
+    'synthetix-network-token': 'synthetix',
+    'pancakeswap-token': 'pancakeswap',
+    'sushi': 'sushi',
+    'convex-finance': 'convex-finance',
+    'frax-share': 'frax',
+    'balancer': 'balancer',
+    'rocket-pool': 'rocket-pool',
+    'gmx': 'gmx',
+    'pendle': 'pendle'
+};
+
 // ===== COINGECKO COIN IDs MAPPING =====
 const COINGECKO_IDS = {
     'btc': 'bitcoin',
@@ -262,19 +329,31 @@ const COINGECKO_IDS = {
 // ===== DATA TRANSFORMATION =====
 class DataTransformer {
     static transformCoinGeckoToCrypto(coinData, githubStats = null) {
-        // Calculate approximate MVRV (using price ratio as proxy)
+        // Determine category first
+        const category = this.determineCategory(coinData.id, coinData.symbol);
+
+        // Calculate approximate MVRV (using improved multi-timeframe analysis)
         const priceChange30d = coinData.price_change_percentage_30d_in_currency || 0;
-        const approximateMVRV = this.estimateMVRV(priceChange30d, coinData.market_cap_rank);
+        const priceChange7d = coinData.price_change_percentage_7d_in_currency || 0;
+        const priceChange24h = coinData.price_change_percentage_24h || 0;
+        const approximateMVRV = this.estimateMVRV(
+            priceChange30d,
+            coinData.market_cap_rank,
+            priceChange7d,
+            priceChange24h
+        );
 
         // Estimate address growth from volume and market activity
         const volumeRatio = coinData.total_volume / coinData.market_cap;
-        const addressGrowth = this.estimateAddressGrowth(volumeRatio, priceChange30d);
+        const addressGrowth = this.estimateAddressGrowth(
+            volumeRatio,
+            priceChange30d,
+            coinData.market_cap_rank,
+            category
+        );
 
         // Estimate whale accumulation from volume patterns
-        const whaleAccumulation = this.estimateWhaleAccumulation(volumeRatio, coinData.price_change_percentage_24h);
-
-        // Determine category
-        const category = this.determineCategory(coinData.id, coinData.symbol);
+        const whaleAccumulation = this.estimateWhaleAccumulation(volumeRatio, priceChange24h);
 
         return {
             id: coinData.id,
@@ -290,8 +369,8 @@ class DataTransformer {
             mvrv: approximateMVRV,
             addressGrowth: addressGrowth,
             tvl: this.estimateTVL(coinData, category),
-            githubCommits: githubStats?.commits90d || this.estimateGithubActivity(coinData.market_cap_rank),
-            contributors: githubStats?.contributors || Math.floor(20 + Math.random() * 60),
+            githubCommits: githubStats?.commits90d || this.estimateGithubActivity(coinData.market_cap_rank, category),
+            contributors: githubStats?.contributors || this.estimateContributors(coinData.market_cap_rank, category),
             whaleAccumulation: whaleAccumulation,
             supply: coinData.circulating_supply,
             image: coinData.image,
@@ -301,25 +380,59 @@ class DataTransformer {
     }
 
     // Estimate MVRV ratio based on price performance and market cap rank
-    static estimateMVRV(priceChange30d, marketCapRank) {
+    static estimateMVRV(priceChange30d, marketCapRank, priceChange7d = null, priceChange24h = null) {
         // Lower rank (better) cryptos tend to have MVRV closer to 1
         // Strong price increases suggest MVRV > 1, decreases suggest < 1
         const baseRatio = 1.0;
-        const priceImpact = (priceChange30d / 100) * 0.3; // Price contributes 30%
-        const rankImpact = (marketCapRank - 50) * 0.002; // Rank contributes small amount
 
-        const mvrv = Math.max(0.5, Math.min(3.0, baseRatio + priceImpact - rankImpact));
+        // Multi-timeframe analysis (more weight to longer timeframe)
+        let priceImpact = 0;
+        if (priceChange30d !== null) {
+            priceImpact += (priceChange30d / 100) * 0.25; // 30d = 25%
+        }
+        if (priceChange7d !== null) {
+            priceImpact += (priceChange7d / 100) * 0.15; // 7d = 15%
+        }
+        if (priceChange24h !== null) {
+            priceImpact += (priceChange24h / 100) * 0.05; // 24h = 5%
+        }
+
+        // Rank-based adjustment
+        const rankImpact = (marketCapRank - 50) * 0.0015;
+
+        // Top 10 cryptos (BTC, ETH, etc.) typically have MVRV closer to 1
+        const topCryptoAdjustment = marketCapRank <= 10 ? -0.05 : 0;
+
+        const mvrv = Math.max(0.5, Math.min(3.0, baseRatio + priceImpact - rankImpact + topCryptoAdjustment));
         return parseFloat(mvrv.toFixed(2));
     }
 
     // Estimate address growth from volume patterns
-    static estimateAddressGrowth(volumeRatio, priceChange30d) {
-        // High volume ratio + positive price = likely address growth
-        const volumeComponent = Math.min(volumeRatio * 100, 20); // Up to 20% from volume
-        const priceComponent = Math.max(-10, Math.min(20, priceChange30d * 0.5)); // Price influence
+    static estimateAddressGrowth(volumeRatio, priceChange30d, marketCapRank, category) {
+        // Facteur 1: Volume ratio (activité réseau)
+        const volumeScore = Math.min(volumeRatio * 100, 15);
 
-        const growth = volumeComponent + priceComponent;
-        return parseFloat(growth.toFixed(1));
+        // Facteur 2: Performance prix (attraction nouveaux utilisateurs)
+        const priceScore = Math.max(-5, Math.min(15, priceChange30d * 0.4));
+
+        // Facteur 3: Rank (projets top ont croissance plus stable)
+        const rankBonus = marketCapRank <= 20 ? 5 : marketCapRank <= 50 ? 3 : marketCapRank <= 100 ? 1 : 0;
+
+        // Facteur 4: Catégorie (DeFi et Layer 2 ont généralement plus de croissance)
+        const categoryBonus = {
+            'defi': 4,
+            'layer2': 5,
+            'layer1': 2,
+            'gaming': 3,
+            'ai': 3,
+            'oracle': 1
+        }[category] || 0;
+
+        // Facteur 5: Volume très élevé suggère adoption massive
+        const highVolumeBonus = volumeRatio > 0.2 ? 5 : volumeRatio > 0.15 ? 3 : 0;
+
+        const growth = volumeScore + priceScore + rankBonus + categoryBonus + highVolumeBonus;
+        return parseFloat(Math.max(-10, Math.min(40, growth)).toFixed(1));
     }
 
     // Estimate whale accumulation from volume patterns
@@ -362,12 +475,64 @@ class DataTransformer {
         return 'other';
     }
 
-    // Estimate GitHub activity based on market cap rank
-    static estimateGithubActivity(rank) {
-        if (rank <= 10) return 200 + Math.floor(Math.random() * 300); // Top 10: Very active
-        if (rank <= 50) return 100 + Math.floor(Math.random() * 150); // Top 50: Active
-        if (rank <= 100) return 50 + Math.floor(Math.random() * 100); // Top 100: Moderate
-        return 20 + Math.floor(Math.random() * 50); // Others: Low activity
+    // Estimate GitHub activity based on market cap rank and category
+    static estimateGithubActivity(rank, category = 'other') {
+        // Base commits by rank
+        let baseCommits;
+        if (rank <= 10) baseCommits = 250;
+        else if (rank <= 30) baseCommits = 180;
+        else if (rank <= 50) baseCommits = 120;
+        else if (rank <= 100) baseCommits = 80;
+        else if (rank <= 200) baseCommits = 50;
+        else baseCommits = 30;
+
+        // Bonus par catégorie (certaines sont plus dev-intensive)
+        const categoryBonus = {
+            'layer1': 60,      // Infrastructure = beaucoup de dev (Bitcoin, Ethereum)
+            'layer2': 50,      // Scaling solutions (Arbitrum, Optimism)
+            'defi': 40,        // Protocoles DeFi (Aave, Uniswap)
+            'oracle': 30,      // Services d'oracles (Chainlink)
+            'ai': 25,          // AI projects
+            'gaming': 15,      // Moins dev-intensive
+            'other': 0
+        };
+
+        const bonus = categoryBonus[category] || 0;
+
+        // Variation aléatoire ±20%
+        const variation = 1 + (Math.random() - 0.5) * 0.4;
+
+        return Math.floor((baseCommits + bonus) * variation);
+    }
+
+    // Estimate number of contributors based on rank and category
+    static estimateContributors(rank, category = 'other') {
+        // Base contributors by rank
+        let baseContributors;
+        if (rank <= 10) baseContributors = 100;
+        else if (rank <= 30) baseContributors = 70;
+        else if (rank <= 50) baseContributors = 50;
+        else if (rank <= 100) baseContributors = 35;
+        else if (rank <= 200) baseContributors = 25;
+        else baseContributors = 15;
+
+        // Bonus par catégorie
+        const categoryBonus = {
+            'layer1': 30,
+            'layer2': 20,
+            'defi': 15,
+            'oracle': 10,
+            'ai': 8,
+            'gaming': 5,
+            'other': 0
+        };
+
+        const bonus = categoryBonus[category] || 0;
+
+        // Variation aléatoire ±30%
+        const variation = 1 + (Math.random() - 0.5) * 0.6;
+
+        return Math.floor((baseContributors + bonus) * variation);
     }
 }
 

@@ -77,6 +77,9 @@
             </div>
         </div>
 
+        <!-- Progress Bar (hidden by default) -->
+        <div id="progress-bar" style="display: none; position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 9999; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: var(--shadow-lg); min-width: 400px;"></div>
+
         <!-- Page: Scanner d'Opportunités -->
         <div id="page-scanner" class="page-content active">
             <!-- Stats Cards -->
@@ -142,9 +145,12 @@
                 <div class="filter-group">
                     <label>Score Minimum</label>
                     <select id="filter-score">
-                        <option value="70">70+ (Toutes opportunités)</option>
-                        <option value="75">75+ (Bonnes)</option>
+                        <option value="50">50+ (Toutes)</option>
+                        <option value="60">60+ (Correctes)</option>
+                        <option value="70" selected>70+ (Bonnes)</option>
+                        <option value="75">75+ (Très bonnes)</option>
                         <option value="80">80+ (Excellentes)</option>
+                        <option value="85">85+ (Exceptionnelles)</option>
                     </select>
                 </div>
                 <div class="filter-group">
