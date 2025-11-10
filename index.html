@@ -53,6 +53,13 @@
                 <span class="value">$89.5B</span>
             </div>
         </div>
+
+        <div class="watchlist">
+            <h3>⭐ Ma Watchlist</h3>
+            <div id="watchlist-items">
+                <!-- Watchlist items will be dynamically loaded here -->
+            </div>
+        </div>
     </div>
 
     <!-- Main Content -->
@@ -65,6 +72,10 @@
             <div class="header-right">
                 <div class="search-box">
                     <input type="text" placeholder="Rechercher une crypto..." id="search-input">
+                </div>
+                <div class="refresh-btn" id="toggle-theme">
+                    <span id="theme-icon">🌙</span>
+                    <span id="theme-text">Mode Clair</span>
                 </div>
                 <div class="refresh-btn" id="toggle-live-data">
                     <span id="live-data-icon">📡</span>
@@ -169,7 +180,12 @@
                 <div class="card-header">
                     <h2>🎯 Meilleures Opportunités (Score ≥ 70)</h2>
                     <div class="card-actions">
-                        <button class="btn-secondary" id="export-opportunities">Exporter CSV</button>
+                        <button class="btn-secondary" onclick="exportOpportunities('csv')" title="Exporter en CSV">
+                            📥 CSV
+                        </button>
+                        <button class="btn-secondary" onclick="exportOpportunities('json')" title="Exporter en JSON" style="margin-left: 8px;">
+                            📥 JSON
+                        </button>
                     </div>
                 </div>
                 <div class="table-container">
@@ -177,6 +193,7 @@
                         <thead>
                             <tr>
                                 <th>Crypto</th>
+                                <th>⭐</th>
                                 <th>Prix</th>
                                 <th>Tendance 30j</th>
                                 <th>Score</th>

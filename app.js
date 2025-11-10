@@ -4,13 +4,265 @@ let selectedCrypto = null;
 let charts = {};
 let filteredCryptos = [];
 
+// ===== WATCHLIST / FAVORITES =====
+function getFavorites() {
+    try {
+        const favorites = localStorage.getItem('crypto_favorites');
+        return favorites ? JSON.parse(favorites) : [];
+    } catch (error) {
+        console.warn('Error reading favorites:', error);
+        return [];
+    }
+}
+
+function saveFavorites(favorites) {
+    try {
+        localStorage.setItem('crypto_favorites', JSON.stringify(favorites));
+        return true;
+    } catch (error) {
+        console.warn('Error saving favorites:', error);
+        return false;
+    }
+}
+
+function isFavorite(cryptoId) {
+    return getFavorites().includes(cryptoId);
+}
+
+function addToFavorites(cryptoId) {
+    const favorites = getFavorites();
+    if (!favorites.includes(cryptoId)) {
+        favorites.push(cryptoId);
+        saveFavorites(favorites);
+        updateWatchlistDisplay();
+        return true;
+    }
+    return false;
+}
+
+function removeFromFavorites(cryptoId) {
+    const favorites = getFavorites();
+    const index = favorites.indexOf(cryptoId);
+    if (index > -1) {
+        favorites.splice(index, 1);
+        saveFavorites(favorites);
+        updateWatchlistDisplay();
+        return true;
+    }
+    return false;
+}
+
+function toggleFavorite(cryptoId) {
+    if (isFavorite(cryptoId)) {
+        removeFromFavorites(cryptoId);
+        showNotification(`Retiré de la watchlist`, 'info');
+    } else {
+        addToFavorites(cryptoId);
+        showNotification(`⭐ Ajouté à la watchlist`, 'success');
+    }
+    // Refresh the table to update star icons
+    updateOpportunitiesTable();
+}
+
+function updateWatchlistDisplay() {
+    const watchlistContainer = document.getElementById('watchlist-items');
+    if (!watchlistContainer) return;
+
+    const favorites = getFavorites();
+    const db = getCurrentDatabase();
+
+    if (favorites.length === 0) {
+        watchlistContainer.innerHTML = `
+            <div class="watchlist-empty">
+                <p style="color: var(--text-secondary); font-size: 13px; text-align: center; padding: 20px 10px;">
+                    Aucune crypto en watchlist<br>
+                    <span style="font-size: 11px;">Cliquez sur ⭐ pour ajouter</span>
+                </p>
+            </div>
+        `;
+        return;
+    }
+
+    watchlistContainer.innerHTML = favorites.map(cryptoId => {
+        const crypto = db.find(c => c.id === cryptoId);
+        if (!crypto) return '';
+
+        const priceChange = crypto.priceChange24h || 0;
+        const changeClass = priceChange >= 0 ? 'positive' : 'negative';
+        const changeIcon = priceChange >= 0 ? '📈' : '📉';
+
+        return `
+            <div class="watchlist-item" onclick="showCryptoDetails('${crypto.id}')">
+                <div class="watchlist-item-header">
+                    <span class="watchlist-crypto-name">${crypto.symbol.toUpperCase()}</span>
+                    <button class="watchlist-remove" onclick="event.stopPropagation(); removeFromFavorites('${crypto.id}'); updateWatchlistDisplay();" title="Retirer">×</button>
+                </div>
+                <div class="watchlist-item-info">
+                    <span class="watchlist-price">$${crypto.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span class="watchlist-change ${changeClass}">${changeIcon} ${priceChange.toFixed(1)}%</span>
+                </div>
+                <div class="watchlist-score">
+                    <span style="font-size: 11px; color: var(--text-secondary);">Score</span>
+                    <span class="score-badge score-${crypto.score >= 80 ? 'excellent' : crypto.score >= 70 ? 'good' : 'medium'}">${crypto.score}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ===== EXPORT FUNCTIONALITY =====
+function convertToCSV(data) {
+    if (!data || data.length === 0) return '';
+
+    // Define headers
+    const headers = [
+        'Name', 'Symbol', 'Price (USD)', 'Change 24h (%)', 'Market Cap',
+        'Score', 'Signal', 'MVRV', 'Address Growth (%)',
+        'GitHub Commits', 'Contributors', 'Category'
+    ];
+
+    // Create CSV rows
+    const rows = data.map(crypto => [
+        crypto.name,
+        crypto.symbol.toUpperCase(),
+        crypto.price.toFixed(2),
+        crypto.priceChange24h.toFixed(2),
+        crypto.marketCap,
+        crypto.score,
+        new CryptoScoring(crypto).getSignal().signal,
+        crypto.mvrv.toFixed(2),
+        crypto.addressGrowth.toFixed(1),
+        crypto.githubCommits || 'N/A',
+        crypto.contributors || 'N/A',
+        crypto.category || 'N/A'
+    ]);
+
+    // Combine headers and rows
+    const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell =>
+            typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell
+        ).join(','))
+    ].join('\n');
+
+    return csvContent;
+}
+
+function convertToJSON(data) {
+    if (!data || data.length === 0) return '[]';
+
+    // Create simplified objects for export
+    const exportData = data.map(crypto => ({
+        name: crypto.name,
+        symbol: crypto.symbol.toUpperCase(),
+        price: parseFloat(crypto.price.toFixed(2)),
+        priceChange24h: parseFloat(crypto.priceChange24h.toFixed(2)),
+        marketCap: crypto.marketCap,
+        score: crypto.score,
+        signal: new CryptoScoring(crypto).getSignal().signal,
+        mvrv: parseFloat(crypto.mvrv.toFixed(2)),
+        addressGrowth: parseFloat(crypto.addressGrowth.toFixed(1)),
+        githubCommits: crypto.githubCommits || null,
+        contributors: crypto.contributors || null,
+        category: crypto.category || null,
+        exportDate: new Date().toISOString()
+    }));
+
+    return JSON.stringify(exportData, null, 2);
+}
+
+function downloadFile(content, filename, contentType) {
+    const blob = new Blob([content], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function exportOpportunities(format = 'csv') {
+    const opportunities = filteredCryptos.length > 0 ? filteredCryptos :
+        (typeof getCurrentOpportunities !== 'undefined' ? getCurrentOpportunities(50) : getOpportunities(50));
+
+    if (opportunities.length === 0) {
+        showNotification('❌ Aucune opportunité à exporter', 'error');
+        return;
+    }
+
+    const timestamp = new Date().toISOString().split('T')[0];
+
+    if (format === 'csv') {
+        const csv = convertToCSV(opportunities);
+        downloadFile(csv, `crypto-opportunities-${timestamp}.csv`, 'text/csv');
+        showNotification(`📥 ${opportunities.length} opportunités exportées en CSV`, 'success');
+    } else if (format === 'json') {
+        const json = convertToJSON(opportunities);
+        downloadFile(json, `crypto-opportunities-${timestamp}.json`, 'application/json');
+        showNotification(`📥 ${opportunities.length} opportunités exportées en JSON`, 'success');
+    }
+}
+
+// ===== THEME MANAGEMENT =====
+function getTheme() {
+    try {
+        return localStorage.getItem('crypto_theme') || 'dark';
+    } catch (error) {
+        return 'dark';
+    }
+}
+
+function setTheme(theme) {
+    try {
+        localStorage.setItem('crypto_theme', theme);
+        document.documentElement.setAttribute('data-theme', theme);
+        updateThemeButton(theme);
+    } catch (error) {
+        console.warn('Error saving theme:', error);
+    }
+}
+
+function toggleTheme() {
+    const currentTheme = getTheme();
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+}
+
+function updateThemeButton(theme) {
+    const themeIcon = document.getElementById('theme-icon');
+    const themeText = document.getElementById('theme-text');
+
+    if (theme === 'light') {
+        themeIcon.textContent = '☀️';
+        themeText.textContent = 'Mode Sombre';
+    } else {
+        themeIcon.textContent = '🌙';
+        themeText.textContent = 'Mode Clair';
+    }
+}
+
+function initTheme() {
+    const theme = getTheme();
+    setTheme(theme);
+
+    // Add click listener to theme toggle button
+    const toggleBtn = document.getElementById('toggle-theme');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', toggleTheme);
+    }
+}
+
 // ===== DOM READY =====
 document.addEventListener('DOMContentLoaded', function() {
     initNavigation();
     initFilters();
     initRefresh();
+    initTheme();
     loadScannerPage();
     updateMarketStatus();
+    updateWatchlistDisplay();
 
     // Auto-refresh every 30 seconds
     setInterval(() => {
@@ -18,6 +270,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateOpportunitiesTable();
         }
         updateMarketStatus();
+        updateWatchlistDisplay();
     }, 30000);
 });
 
@@ -244,7 +497,7 @@ function updateOpportunitiesTable() {
         const currentScore = parseInt(document.getElementById('filter-score')?.value || '70');
         tbody.innerHTML = `
             <tr>
-                <td colspan="9" style="text-align: center; padding: 60px 40px;">
+                <td colspan="10" style="text-align: center; padding: 60px 40px;">
                     <div style="font-size: 64px; margin-bottom: 20px; opacity: 0.3;">📊</div>
                     <h3 style="margin-bottom: 12px; font-size: 22px;">Aucune opportunité trouvée</h3>
                     <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 14px; max-width: 500px; margin-left: auto; margin-right: auto;">
@@ -282,6 +535,10 @@ function updateOpportunitiesTable() {
             createSparkline(sparklineId, sparklineData, color);
         }, 50 * index);
 
+        const isFav = isFavorite(crypto.id);
+        const starIcon = isFav ? '⭐' : '☆';
+        const starTitle = isFav ? 'Retirer de la watchlist' : 'Ajouter à la watchlist';
+
         return `
             <tr>
                 <td>
@@ -292,6 +549,11 @@ function updateOpportunitiesTable() {
                             <div class="crypto-symbol">${crypto.symbol}</div>
                         </div>
                     </div>
+                </td>
+                <td style="text-align: center;">
+                    <button class="btn-favorite" onclick="toggleFavorite('${crypto.id}')" title="${starTitle}">
+                        ${starIcon}
+                    </button>
                 </td>
                 <td>
                     <div class="price">$${crypto.price.toFixed(2)}</div>

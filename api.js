@@ -25,19 +25,39 @@ const API_CONFIG = {
     }
 };
 
-// ===== CACHE MANAGEMENT =====
+// ===== CACHE MANAGEMENT WITH LOCALSTORAGE =====
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 function getCacheKey(api, endpoint) {
-    return `${api}_${endpoint}`;
+    return `cache_${api}_${endpoint}`;
 }
 
 function getFromCache(api, endpoint) {
     const key = getCacheKey(api, endpoint);
-    const cached = API_CONFIG[api].cache[key];
 
+    // Try localStorage first (persistent cache)
+    try {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Date.now() - parsed.timestamp < CACHE_DURATION) {
+                console.log(`✅ Cache hit (localStorage): ${key}`);
+                // Also update in-memory cache for faster access
+                API_CONFIG[api].cache[key] = parsed;
+                return parsed.data;
+            } else {
+                // Expired, remove from localStorage
+                localStorage.removeItem(key);
+            }
+        }
+    } catch (error) {
+        console.warn(`⚠️ localStorage read error for ${key}:`, error);
+    }
+
+    // Fallback to in-memory cache
+    const cached = API_CONFIG[api].cache[key];
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-        console.log(`✅ Cache hit: ${key}`);
+        console.log(`✅ Cache hit (memory): ${key}`);
         return cached.data;
     }
 
@@ -46,12 +66,61 @@ function getFromCache(api, endpoint) {
 
 function setCache(api, endpoint, data) {
     const key = getCacheKey(api, endpoint);
-    API_CONFIG[api].cache[key] = {
+    const cacheObject = {
         data: data,
         timestamp: Date.now()
     };
-    console.log(`💾 Cached: ${key}`);
+
+    // Save to in-memory cache
+    API_CONFIG[api].cache[key] = cacheObject;
+
+    // Save to localStorage (persistent)
+    try {
+        localStorage.setItem(key, JSON.stringify(cacheObject));
+        console.log(`💾 Cached (persistent): ${key}`);
+    } catch (error) {
+        // localStorage full or disabled
+        console.warn(`⚠️ localStorage write error for ${key}:`, error);
+        // Continue with in-memory cache only
+        console.log(`💾 Cached (memory only): ${key}`);
+    }
 }
+
+// Clean expired cache entries from localStorage (run on page load)
+function cleanExpiredCache() {
+    try {
+        const keys = Object.keys(localStorage);
+        let cleaned = 0;
+
+        keys.forEach(key => {
+            if (key.startsWith('cache_')) {
+                try {
+                    const stored = localStorage.getItem(key);
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (Date.now() - parsed.timestamp >= CACHE_DURATION) {
+                            localStorage.removeItem(key);
+                            cleaned++;
+                        }
+                    }
+                } catch (e) {
+                    // Invalid cache entry, remove it
+                    localStorage.removeItem(key);
+                    cleaned++;
+                }
+            }
+        });
+
+        if (cleaned > 0) {
+            console.log(`🧹 Cleaned ${cleaned} expired cache entries from localStorage`);
+        }
+    } catch (error) {
+        console.warn('⚠️ Error cleaning cache:', error);
+    }
+}
+
+// Run cache cleanup on module load
+cleanExpiredCache();
 
 // ===== API HELPER FUNCTIONS =====
 async function fetchWithRetry(url, retries = 3) {

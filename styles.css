@@ -22,6 +22,28 @@
     --transition: all 0.2s ease;
 }
 
+/* ===== LIGHT THEME ===== */
+[data-theme="light"] {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-hover: #f1f5f9;
+
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-danger: #ef4444;
+    --color-info: #3b82f6;
+    --color-accent: #8b5cf6;
+
+    --border-color: #e2e8f0;
+    --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
 /* ===== RESET & BASE ===== */
 * {
     margin: 0;
@@ -128,6 +150,102 @@ body {
 .status-item .value {
     color: var(--color-success);
     font-weight: 600;
+}
+
+/* ===== WATCHLIST ===== */
+.watchlist {
+    margin-top: 20px;
+    padding: 20px;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.watchlist h3 {
+    font-size: 14px;
+    margin-bottom: 15px;
+    color: var(--text-primary);
+}
+
+.watchlist-item {
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: var(--transition);
+    border: 1px solid transparent;
+}
+
+.watchlist-item:hover {
+    background: var(--bg-hover);
+    border-color: var(--color-accent);
+}
+
+.watchlist-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.watchlist-crypto-name {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.watchlist-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 5px;
+    transition: var(--transition);
+}
+
+.watchlist-remove:hover {
+    color: var(--color-danger);
+}
+
+.watchlist-item-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.watchlist-price {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.watchlist-change {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.watchlist-score {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-favorite {
+    background: transparent;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 5px;
+    transition: var(--transition);
+    opacity: 0.6;
+}
+
+.btn-favorite:hover {
+    opacity: 1;
+    transform: scale(1.2);
 }
 
 .main-content {
