@@ -218,7 +218,15 @@ class RealDataFetcher {
             'arb': 'arbitrum',
             'op': 'optimism',
             'imx': 'immutable-x',
-            'inj': 'injective-protocol'
+            'inj': 'injective-protocol',
+            // DeFi tokens
+            'crv': 'curve-dao-token',
+            'aave': 'aave',
+            'snx': 'synthetix-network-token',
+            'ldo': 'lido-dao',
+            // AI/Render tokens
+            'rndr': 'render-token',
+            'fet': 'fetch-ai'
         };
 
         return mapping[symbol.toLowerCase()] || symbol.toLowerCase();
