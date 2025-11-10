@@ -345,9 +345,32 @@ function renderSignalCard(signal) {
 async function showTradePlan(cryptoId) {
     console.log(`🔍 Opening trade plan for crypto ID: ${cryptoId}`);
 
-    const crypto = getCurrentDatabase().find(c => c.id === cryptoId);
+    // Try to find by ID first
+    let crypto = getCurrentDatabase().find(c => c.id === cryptoId);
+
+    // Fallback: Try to find by partial ID match (for cases like 'curve' matching 'curve-dao-token')
+    if (!crypto) {
+        console.log(`⚠️ Exact ID not found, trying partial match...`);
+        crypto = getCurrentDatabase().find(c =>
+            c.id.toLowerCase().includes(cryptoId.toLowerCase()) ||
+            cryptoId.toLowerCase().includes(c.id.toLowerCase())
+        );
+    }
+
+    // Fallback: Try to find by symbol from cached signal
+    if (!crypto) {
+        console.log(`⚠️ Partial ID not found, trying to find by symbol from cache...`);
+        const cachedSignal = advancedSignalsCache.get(cryptoId);
+        if (cachedSignal && cachedSignal.crypto) {
+            const symbol = cachedSignal.crypto.symbol;
+            crypto = getCurrentDatabase().find(c => c.symbol.toLowerCase() === symbol.toLowerCase());
+            console.log(`   Found by symbol: ${symbol}`);
+        }
+    }
+
     if (!crypto) {
         console.error(`❌ Crypto not found in database: ${cryptoId}`);
+        console.error(`   Available IDs (first 10):`, getCurrentDatabase().slice(0, 10).map(c => c.id));
         alert(`Erreur: Crypto avec ID "${cryptoId}" non trouvée dans la base de données.`);
         return;
     }

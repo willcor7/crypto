@@ -91,7 +91,7 @@ const cryptoDatabase = [
         score: 76
     },
     {
-        id: 'polygon',
+        id: 'matic-network',
         name: 'Polygon',
         symbol: 'MATIC',
         category: 'layer2',
@@ -127,7 +127,7 @@ const cryptoDatabase = [
         score: 78
     },
     {
-        id: 'avalanche',
+        id: 'avalanche-2',
         name: 'Avalanche',
         symbol: 'AVAX',
         category: 'layer1',
@@ -145,7 +145,7 @@ const cryptoDatabase = [
         score: 77
     },
     {
-        id: 'curve',
+        id: 'curve-dao-token',
         name: 'Curve DAO',
         symbol: 'CRV',
         category: 'defi',
@@ -163,7 +163,7 @@ const cryptoDatabase = [
         score: 81
     },
     {
-        id: 'immutable',
+        id: 'immutable-x',
         name: 'Immutable X',
         symbol: 'IMX',
         category: 'gaming',
@@ -181,7 +181,7 @@ const cryptoDatabase = [
         score: 83
     },
     {
-        id: 'render',
+        id: 'render-token',
         name: 'Render Token',
         symbol: 'RNDR',
         category: 'ai',
@@ -199,7 +199,7 @@ const cryptoDatabase = [
         score: 80
     },
     {
-        id: 'fetchai',
+        id: 'fetch-ai',
         name: 'Fetch.ai',
         symbol: 'FET',
         category: 'ai',
@@ -217,7 +217,7 @@ const cryptoDatabase = [
         score: 82
     },
     {
-        id: 'lido',
+        id: 'lido-dao',
         name: 'Lido DAO',
         symbol: 'LDO',
         category: 'defi',
@@ -253,7 +253,7 @@ const cryptoDatabase = [
         score: 75
     },
     {
-        id: 'synthetix',
+        id: 'synthetix-network-token',
         name: 'Synthetix',
         symbol: 'SNX',
         category: 'defi',
@@ -525,7 +525,7 @@ const signalHistory = [
 // ===== NEW ENTRANTS =====
 const newEntrants = [
     {
-        id: 'immutable',
+        id: 'immutable-x',
         name: 'Immutable X',
         symbol: 'IMX',
         score: 83,
@@ -534,7 +534,7 @@ const newEntrants = [
         highlight: true
     },
     {
-        id: 'fetchai',
+        id: 'fetch-ai',
         name: 'Fetch.ai',
         symbol: 'FET',
         score: 82,
@@ -543,7 +543,7 @@ const newEntrants = [
         highlight: true
     },
     {
-        id: 'curve',
+        id: 'curve-dao-token',
         name: 'Curve DAO',
         symbol: 'CRV',
         score: 81,
