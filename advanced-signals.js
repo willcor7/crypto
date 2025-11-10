@@ -345,9 +345,77 @@ function renderSignalCard(signal) {
 async function showTradePlan(cryptoId) {
     console.log(`🔍 Opening trade plan for crypto ID: ${cryptoId}`);
 
-    const crypto = getCurrentDatabase().find(c => c.id === cryptoId);
+    // ID mapping for common mismatches (old IDs -> correct IDs)
+    const idMapping = {
+        'polygon': 'matic-network',
+        'lido': 'lido-dao',
+        'fetchai': 'fetch-ai',
+        'synthetix': 'synthetix-network-token',
+        'avalanche': 'avalanche-2',
+        'render': 'render-token',
+        'curve': 'curve-dao-token',
+        'immutable': 'immutable-x'
+    };
+
+    // Try mapped ID first
+    let searchId = idMapping[cryptoId.toLowerCase()] || cryptoId;
+
+    // Try to find by ID first
+    let crypto = getCurrentDatabase().find(c => c.id === searchId);
+
+    // Fallback 1: Try original ID if mapping was used
+    if (!crypto && searchId !== cryptoId) {
+        console.log(`⚠️ Mapped ID not found, trying original ID...`);
+        crypto = getCurrentDatabase().find(c => c.id === cryptoId);
+    }
+
+    // Fallback 2: Try to find by partial ID match
+    if (!crypto) {
+        console.log(`⚠️ Exact ID not found, trying partial match...`);
+        crypto = getCurrentDatabase().find(c =>
+            c.id.toLowerCase().includes(cryptoId.toLowerCase()) ||
+            cryptoId.toLowerCase().includes(c.id.toLowerCase())
+        );
+    }
+
+    // Fallback 3: Try to find by symbol from known mapping
+    if (!crypto) {
+        console.log(`⚠️ Partial ID not found, trying symbol mapping...`);
+        const symbolMapping = {
+            'polygon': 'MATIC',
+            'lido': 'LDO',
+            'fetchai': 'FET',
+            'synthetix': 'SNX',
+            'avalanche': 'AVAX',
+            'render': 'RNDR',
+            'curve': 'CRV',
+            'immutable': 'IMX',
+            'optimism': 'OP'
+        };
+
+        const symbol = symbolMapping[cryptoId.toLowerCase()];
+        if (symbol) {
+            crypto = getCurrentDatabase().find(c => c.symbol.toUpperCase() === symbol);
+            if (crypto) console.log(`   ✅ Found by symbol mapping: ${symbol} -> ${crypto.id}`);
+        }
+    }
+
+    // Fallback 4: Try to find by symbol from cached signal
+    if (!crypto) {
+        console.log(`⚠️ Symbol mapping not found, trying cache...`);
+        const cachedSignal = advancedSignalsCache.get(cryptoId);
+        if (cachedSignal && cachedSignal.crypto) {
+            const symbol = cachedSignal.crypto.symbol;
+            crypto = getCurrentDatabase().find(c => c.symbol.toLowerCase() === symbol.toLowerCase());
+            if (crypto) console.log(`   ✅ Found by cached symbol: ${symbol} -> ${crypto.id}`);
+        }
+    }
+
     if (!crypto) {
         console.error(`❌ Crypto not found in database: ${cryptoId}`);
+        console.error(`   Searched ID: ${searchId}`);
+        console.error(`   Available IDs (first 10):`, getCurrentDatabase().slice(0, 10).map(c => c.id));
+        console.error(`   Available symbols (first 10):`, getCurrentDatabase().slice(0, 10).map(c => c.symbol));
         alert(`Erreur: Crypto avec ID "${cryptoId}" non trouvée dans la base de données.`);
         return;
     }
