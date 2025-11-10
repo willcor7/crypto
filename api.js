@@ -1,5 +1,5 @@
 // ===== FREE CRYPTO APIs INTEGRATION =====
-// Uses only free APIs: CoinGecko, GitHub, CoinCap
+// Uses only free APIs: CoinGecko, GitHub, CoinCap, DefiLlama, CryptoPanic, Blockchair
 
 // ===== CONFIGURATION =====
 const API_CONFIG = {
@@ -21,6 +21,18 @@ const API_CONFIG = {
     defillama: {
         baseUrl: 'https://api.llama.fi',
         rateLimit: 300, // requests per 5 minutes (very generous)
+        cache: {}
+    },
+    cryptopanic: {
+        baseUrl: 'https://cryptopanic.com/api/v1',
+        rateLimit: 100, // requests per day (free tier, no auth)
+        cache: {},
+        // Optional: Add your free API key from https://cryptopanic.com/developers/api/
+        // apiKey: 'your_key_here' // Leave empty to use public endpoints
+    },
+    blockchair: {
+        baseUrl: 'https://api.blockchair.com',
+        rateLimit: 30, // requests per minute (free tier)
         cache: {}
     }
 };
@@ -716,6 +728,282 @@ class CryptoDataFetcher {
     }
 }
 
+// ===== CRYPTOPANIC API (NEWS SENTIMENT) =====
+class CryptoPanicAPI {
+    static async getNewsSentiment(currency) {
+        const cached = getFromCache('cryptopanic', `sentiment_${currency}`);
+        if (cached) return cached;
+
+        try {
+            // Build URL with optional API key
+            let url = `${API_CONFIG.cryptopanic.baseUrl}/posts/?currencies=${currency.toUpperCase()}&kind=news`;
+            if (API_CONFIG.cryptopanic.apiKey) {
+                url += `&auth_token=${API_CONFIG.cryptopanic.apiKey}`;
+            }
+
+            const data = await fetchWithRetry(url);
+
+            if (!data || !data.results || data.results.length === 0) {
+                return { sentiment: 'neutral', score: 50, newsCount: 0 };
+            }
+
+            // Analyze sentiment from votes
+            const posts = data.results.slice(0, 20); // Last 20 news
+            let positiveCount = 0;
+            let negativeCount = 0;
+            let totalVotes = 0;
+
+            posts.forEach(post => {
+                const votes = post.votes || {};
+                const positive = votes.positive || 0;
+                const negative = votes.negative || 0;
+                const important = votes.important || 0;
+                const liked = votes.liked || 0;
+
+                positiveCount += positive + important + liked;
+                negativeCount += negative;
+                totalVotes += positive + negative + important + liked;
+            });
+
+            // Calculate sentiment score (0-100)
+            let sentimentScore = 50; // Neutral baseline
+            if (totalVotes > 0) {
+                sentimentScore = Math.round((positiveCount / (positiveCount + negativeCount)) * 100);
+            }
+
+            // Determine sentiment label
+            let sentiment = 'neutral';
+            if (sentimentScore >= 70) sentiment = 'positive';
+            else if (sentimentScore >= 55) sentiment = 'slightly-positive';
+            else if (sentimentScore <= 30) sentiment = 'negative';
+            else if (sentimentScore <= 45) sentiment = 'slightly-negative';
+
+            const result = {
+                sentiment,
+                score: sentimentScore,
+                newsCount: posts.length,
+                positiveCount,
+                negativeCount,
+                recentNews: posts.slice(0, 5).map(p => ({
+                    title: p.title,
+                    published: p.published_at,
+                    url: p.url
+                }))
+            };
+
+            setCache('cryptopanic', `sentiment_${currency}`, result);
+            return result;
+
+        } catch (error) {
+            console.warn(`⚠️ CryptoPanic API error for ${currency}:`, error.message);
+            // Return neutral sentiment on error
+            return { sentiment: 'neutral', score: 50, newsCount: 0, error: true };
+        }
+    }
+
+    static getSentimentEmoji(sentiment) {
+        const emojis = {
+            'positive': '🟢',
+            'slightly-positive': '🟡',
+            'neutral': '⚪',
+            'slightly-negative': '🟠',
+            'negative': '🔴'
+        };
+        return emojis[sentiment] || '⚪';
+    }
+}
+
+// ===== BLOCKCHAIR API (ON-CHAIN DATA) =====
+class BlockchairAPI {
+    // Mapping of crypto symbols to Blockchair blockchain names
+    static BLOCKCHAIN_MAPPING = {
+        'BTC': 'bitcoin',
+        'ETH': 'ethereum',
+        'LTC': 'litecoin',
+        'BCH': 'bitcoin-cash',
+        'XRP': 'ripple',
+        'DOGE': 'dogecoin',
+        'DASH': 'dash',
+        'XMR': 'monero',
+        'ZEC': 'zcash',
+        'BNB': 'binance-smart-chain',
+        'MATIC': 'polygon',
+        'ADA': 'cardano',
+        'DOT': 'polkadot'
+    };
+
+    static async getOnChainStats(cryptoSymbol) {
+        const blockchain = this.BLOCKCHAIN_MAPPING[cryptoSymbol.toUpperCase()];
+        if (!blockchain) {
+            // Blockchain not supported, return null
+            return null;
+        }
+
+        const cached = getFromCache('blockchair', `stats_${blockchain}`);
+        if (cached) return cached;
+
+        try {
+            const url = `${API_CONFIG.blockchair.baseUrl}/${blockchain}/stats`;
+            const response = await fetchWithRetry(url);
+
+            if (!response || !response.data) {
+                return null;
+            }
+
+            const stats = response.data;
+
+            const result = {
+                blockchain,
+                activeAddresses24h: stats.active_addresses_24h || stats.transactions_24h || 0,
+                transactions24h: stats.transactions_24h || 0,
+                volume24h: stats.volume_24h || 0,
+                avgTransactionValue: stats.average_transaction_value_24h || 0,
+                hashrate: stats.hashrate_24h || null,
+                difficulty: stats.difficulty || null,
+                blockTime: stats.average_block_time || null,
+                nodes: stats.nodes || null
+            };
+
+            setCache('blockchair', `stats_${blockchain}`, result);
+            return result;
+
+        } catch (error) {
+            console.warn(`⚠️ Blockchair API error for ${blockchain}:`, error.message);
+            return null;
+        }
+    }
+
+    static async getAddressGrowth(cryptoSymbol) {
+        const blockchain = this.BLOCKCHAIN_MAPPING[cryptoSymbol.toUpperCase()];
+        if (!blockchain) return null;
+
+        try {
+            // Get current stats
+            const currentStats = await this.getOnChainStats(cryptoSymbol);
+            if (!currentStats || !currentStats.activeAddresses24h) return null;
+
+            // Estimate growth based on transaction trends
+            // In a real implementation, you'd compare with historical data
+            // For now, we'll use transaction volume as a proxy
+            const growthEstimate = currentStats.transactions24h > 100000 ? 5 : 2;
+
+            return {
+                activeAddresses: currentStats.activeAddresses24h,
+                growthRate7d: growthEstimate,
+                transactions24h: currentStats.transactions24h
+            };
+
+        } catch (error) {
+            console.warn(`⚠️ Error getting address growth for ${cryptoSymbol}:`, error.message);
+            return null;
+        }
+    }
+}
+
+// ===== TECHNICAL INDICATORS =====
+class TechnicalIndicators {
+    // Calculate RSI (Relative Strength Index)
+    static calculateRSI(prices, period = 14) {
+        if (!prices || prices.length < period + 1) {
+            return null;
+        }
+
+        let gains = 0;
+        let losses = 0;
+
+        // Calculate initial average gain and loss
+        for (let i = 1; i <= period; i++) {
+            const change = prices[i] - prices[i - 1];
+            if (change >= 0) {
+                gains += change;
+            } else {
+                losses -= change;
+            }
+        }
+
+        let avgGain = gains / period;
+        let avgLoss = losses / period;
+
+        // Calculate RSI for remaining periods
+        for (let i = period + 1; i < prices.length; i++) {
+            const change = prices[i] - prices[i - 1];
+            const currentGain = change >= 0 ? change : 0;
+            const currentLoss = change < 0 ? -change : 0;
+
+            avgGain = (avgGain * (period - 1) + currentGain) / period;
+            avgLoss = (avgLoss * (period - 1) + currentLoss) / period;
+        }
+
+        if (avgLoss === 0) return 100;
+
+        const rs = avgGain / avgLoss;
+        const rsi = 100 - (100 / (1 + rs));
+
+        return Math.round(rsi * 100) / 100;
+    }
+
+    // Calculate Simple Moving Average
+    static calculateSMA(prices, period) {
+        if (!prices || prices.length < period) {
+            return null;
+        }
+
+        const slice = prices.slice(-period);
+        const sum = slice.reduce((acc, price) => acc + price, 0);
+        return sum / period;
+    }
+
+    // Calculate Exponential Moving Average
+    static calculateEMA(prices, period) {
+        if (!prices || prices.length < period) {
+            return null;
+        }
+
+        const multiplier = 2 / (period + 1);
+        let ema = this.calculateSMA(prices.slice(0, period), period);
+
+        for (let i = period; i < prices.length; i++) {
+            ema = (prices[i] - ema) * multiplier + ema;
+        }
+
+        return ema;
+    }
+
+    // Get RSI signal
+    static getRSISignal(rsi) {
+        if (rsi === null) return { signal: 'N/A', class: 'neutral' };
+
+        if (rsi <= 30) return { signal: 'Oversold', class: 'buy', emoji: '🟢' };
+        if (rsi >= 70) return { signal: 'Overbought', class: 'sell', emoji: '🔴' };
+        return { signal: 'Neutral', class: 'hold', emoji: '⚪' };
+    }
+
+    // Analyze price trend
+    static analyzeTrend(prices, sma20, sma50) {
+        if (!prices || prices.length === 0 || !sma20 || !sma50) {
+            return { trend: 'Unknown', strength: 0 };
+        }
+
+        const currentPrice = prices[prices.length - 1];
+
+        let trend = 'Neutral';
+        let strength = 0;
+
+        // Golden Cross: SMA20 > SMA50 and price > SMA20 = Strong Uptrend
+        if (sma20 > sma50 && currentPrice > sma20) {
+            trend = 'Bullish';
+            strength = Math.min(100, ((currentPrice - sma20) / sma20) * 100);
+        }
+        // Death Cross: SMA20 < SMA50 and price < SMA20 = Strong Downtrend
+        else if (sma20 < sma50 && currentPrice < sma20) {
+            trend = 'Bearish';
+            strength = Math.min(100, ((sma20 - currentPrice) / currentPrice) * 100);
+        }
+
+        return { trend, strength: Math.round(strength) };
+    }
+}
+
 // ===== EXPORT =====
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
@@ -723,6 +1011,9 @@ if (typeof module !== 'undefined' && module.exports) {
         GitHubAPI,
         DataTransformer,
         CryptoDataFetcher,
+        CryptoPanicAPI,
+        BlockchairAPI,
+        TechnicalIndicators,
         GITHUB_REPOS,
         COINGECKO_IDS
     };

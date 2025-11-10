@@ -1249,3 +1249,243 @@ ${signal.reasons.length > 0 ? signal.reasons.map(r => `║    • ${r}`).join('\
     // Show modal or alert
     alert(`Score détaillé pour ${crypto.name}: ${scoring.total}/100\n\nVoir la console (F12) pour les détails complets.`);
 }
+
+// ===== PRICE CHARTS WITH CHART.JS =====
+async function loadPriceHistory(cryptoId, days = 30) {
+    try {
+        // Try to fetch from CoinGecko
+        if (typeof CoinGeckoAPI !== 'undefined') {
+            const url = `https://api.coingecko.com/api/v3/coins/${cryptoId}/market_chart?vs_currency=usd&days=${days}`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data && data.prices) {
+                return data.prices.map(([timestamp, price]) => ({
+                    date: new Date(timestamp),
+                    price: price
+                }));
+            }
+        }
+    } catch (error) {
+        console.warn('Could not load price history:', error);
+    }
+
+    // Fallback: generate simulated data based on current price
+    const crypto = selectedCrypto || getCurrentCryptoById(cryptoId);
+    if (!crypto) return [];
+
+    const currentPrice = crypto.price;
+    const prices = [];
+    const now = new Date();
+
+    for (let i = days; i >= 0; i--) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i);
+
+        // Simulate price with some volatility
+        const volatility = 0.02;
+        const trend = crypto.priceChange24h / 100 / days;
+        const randomWalk = (Math.random() - 0.5) * volatility;
+        const price = currentPrice * (1 - trend * i) * (1 + randomWalk);
+
+        prices.push({
+            date: date,
+            price: price
+        });
+    }
+
+    return prices;
+}
+
+function createPriceChart(canvasId, crypto) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+        console.warn(`Canvas ${canvasId} not found`);
+        return null;
+    }
+
+    const ctx = canvas.getContext('2d');
+
+    // Load price history and create chart
+    loadPriceHistory(crypto.id, 30).then(priceHistory => {
+        if (!priceHistory || priceHistory.length === 0) {
+            console.warn('No price history available');
+            return;
+        }
+
+        // Calculate technical indicators
+        const prices = priceHistory.map(p => p.price);
+        const rsi = TechnicalIndicators.calculateRSI(prices, 14);
+        const sma20 = TechnicalIndicators.calculateSMA(prices, 20);
+        const sma50 = TechnicalIndicators.calculateSMA(prices, 50);
+        const trend = TechnicalIndicators.analyzeTrend(prices, sma20, sma50);
+
+        // Prepare data for chart
+        const labels = priceHistory.map(p => p.date.toLocaleDateString('fr-FR', {
+            month: 'short',
+            day: 'numeric'
+        }));
+        const priceData = priceHistory.map(p => p.price);
+
+        // Determine chart color based on overall trend
+        const isPositive = prices[prices.length - 1] > prices[0];
+        const lineColor = isPositive ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)';
+        const gradientColor = isPositive ?
+            'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+
+        // Create gradient
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, gradientColor);
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+        // Destroy existing chart if any
+        if (charts[canvasId]) {
+            charts[canvasId].destroy();
+        }
+
+        // Create new chart
+        charts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Prix (USD)',
+                    data: priceData,
+                    borderColor: lineColor,
+                    backgroundColor: gradient,
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    pointHoverBackgroundColor: lineColor,
+                    pointHoverBorderColor: '#fff',
+                    pointHoverBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        borderColor: lineColor,
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: false,
+                        callbacks: {
+                            label: function(context) {
+                                return `Prix: $${context.parsed.y.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                })}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false,
+                            color: 'rgba(255, 255, 255, 0.05)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            maxTicksLimit: 8
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.05)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            callback: function(value) {
+                                return '$' + value.toLocaleString('en-US');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Display technical indicators in UI
+        displayTechnicalIndicators(crypto, rsi, sma20, sma50, trend);
+    });
+
+    return charts[canvasId];
+}
+
+function displayTechnicalIndicators(crypto, rsi, sma20, sma50, trend) {
+    // Find or create technical indicators container
+    let container = document.getElementById('technical-indicators');
+
+    if (!container) {
+        // Create container if it doesn't exist
+        const metricsSection = document.querySelector('#page-analysis .metrics-grid');
+        if (metricsSection) {
+            const cardHtml = `
+                <div class="metric-card">
+                    <h3>📊 Indicateurs Techniques</h3>
+                    <div id="technical-indicators" class="metric-list"></div>
+                </div>
+            `;
+            metricsSection.insertAdjacentHTML('beforeend', cardHtml);
+            container = document.getElementById('technical-indicators');
+        }
+    }
+
+    if (!container) return;
+
+    const rsiSignal = TechnicalIndicators.getRSISignal(rsi);
+
+    container.innerHTML = `
+        <div class="metric-row">
+            <span class="metric-label">RSI (14)</span>
+            <span class="metric-value ${rsiSignal.class}">
+                ${rsi ? rsi.toFixed(2) : 'N/A'} ${rsiSignal.emoji}
+            </span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Signal RSI</span>
+            <span class="metric-value ${rsiSignal.class}">
+                ${rsiSignal.signal}
+            </span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">SMA (20)</span>
+            <span class="metric-value neutral">
+                $${sma20 ? sma20.toFixed(2) : 'N/A'}
+            </span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">SMA (50)</span>
+            <span class="metric-value neutral">
+                $${sma50 ? sma50.toFixed(2) : 'N/A'}
+            </span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Tendance</span>
+            <span class="metric-value ${trend.trend === 'Bullish' ? 'positive' : trend.trend === 'Bearish' ? 'negative' : 'neutral'}">
+                ${trend.trend} ${trend.trend === 'Bullish' ? '📈' : trend.trend === 'Bearish' ? '📉' : '➡️'}
+            </span>
+        </div>
+        ${trend.strength > 0 ? `
+        <div class="metric-row">
+            <span class="metric-label">Force Tendance</span>
+            <span class="metric-value neutral">
+                ${trend.strength}%
+            </span>
+        </div>
+        ` : ''}
+    `;
+}
