@@ -1489,3 +1489,316 @@ function displayTechnicalIndicators(crypto, rsi, sma20, sma50, trend) {
         ` : ''}
     `;
 }
+
+// ===== PORTFOLIO MANAGEMENT =====
+function getPortfolio() {
+    try {
+        const portfolio = localStorage.getItem('crypto_portfolio');
+        return portfolio ? JSON.parse(portfolio) : {};
+    } catch (error) {
+        console.warn('Error reading portfolio:', error);
+        return {};
+    }
+}
+
+function savePortfolio(portfolio) {
+    try {
+        localStorage.setItem('crypto_portfolio', JSON.stringify(portfolio));
+        return true;
+    } catch (error) {
+        console.warn('Error saving portfolio:', error);
+        return false;
+    }
+}
+
+function addToPortfolio(cryptoId, quantity, avgPrice) {
+    const portfolio = getPortfolio();
+
+    if (portfolio[cryptoId]) {
+        // Update existing position
+        const existingQty = portfolio[cryptoId].quantity;
+        const existingAvg = portfolio[cryptoId].avgPrice;
+
+        // Calculate new average price
+        const newAvgPrice = ((existingQty * existingAvg) + (quantity * avgPrice)) / (existingQty + quantity);
+
+        portfolio[cryptoId] = {
+            quantity: existingQty + quantity,
+            avgPrice: newAvgPrice,
+            addedAt: portfolio[cryptoId].addedAt,
+            updatedAt: new Date().toISOString()
+        };
+    } else {
+        // New position
+        portfolio[cryptoId] = {
+            quantity: quantity,
+            avgPrice: avgPrice,
+            addedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+    }
+
+    savePortfolio(portfolio);
+    updatePortfolioDisplay();
+    showNotification(`✅ Position ajoutée au portfolio`, 'success');
+}
+
+function removeFromPortfolio(cryptoId) {
+    const portfolio = getPortfolio();
+    if (portfolio[cryptoId]) {
+        delete portfolio[cryptoId];
+        savePortfolio(portfolio);
+        updatePortfolioDisplay();
+        showNotification(`Position retirée du portfolio`, 'info');
+    }
+}
+
+function calculatePortfolioStats() {
+    const portfolio = getPortfolio();
+    const db = getCurrentDatabase();
+
+    let totalInvested = 0;
+    let totalValue = 0;
+    let positions = [];
+
+    Object.keys(portfolio).forEach(cryptoId => {
+        const position = portfolio[cryptoId];
+        const crypto = db.find(c => c.id === cryptoId);
+
+        if (crypto) {
+            const invested = position.quantity * position.avgPrice;
+            const currentValue = position.quantity * crypto.price;
+            const pnl = currentValue - invested;
+            const pnlPercent = ((currentValue - invested) / invested) * 100;
+
+            totalInvested += invested;
+            totalValue += currentValue;
+
+            positions.push({
+                crypto,
+                quantity: position.quantity,
+                avgPrice: position.avgPrice,
+                currentPrice: crypto.price,
+                invested,
+                currentValue,
+                pnl,
+                pnlPercent,
+                addedAt: position.addedAt
+            });
+        }
+    });
+
+    const totalPnL = totalValue - totalInvested;
+    const totalPnLPercent = totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
+
+    return {
+        positions,
+        totalInvested,
+        totalValue,
+        totalPnL,
+        totalPnLPercent,
+        positionCount: positions.length
+    };
+}
+
+function updatePortfolioDisplay() {
+    const statsContainer = document.getElementById('portfolio-stats');
+    const positionsContainer = document.getElementById('portfolio-positions');
+
+    if (!statsContainer || !positionsContainer) return;
+
+    const stats = calculatePortfolioStats();
+
+    // Update stats cards
+    statsContainer.innerHTML = `
+        <div class="stat-card">
+            <div class="stat-icon ${stats.totalPnL >= 0 ? 'success' : 'danger'}">💰</div>
+            <div class="stat-info">
+                <h3>Valeur Totale</h3>
+                <p class="stat-value">$${stats.totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                <p class="stat-change ${stats.totalPnL >= 0 ? 'positive' : 'negative'}">
+                    ${stats.totalPnL >= 0 ? '+' : ''}$${Math.abs(stats.totalPnL).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon info">📊</div>
+            <div class="stat-info">
+                <h3>Montant Investi</h3>
+                <p class="stat-value">$${stats.totalInvested.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                <p class="stat-change neutral">${stats.positionCount} position${stats.positionCount > 1 ? 's' : ''}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon ${stats.totalPnLPercent >= 0 ? 'success' : 'danger'}">${stats.totalPnLPercent >= 0 ? '📈' : '📉'}</div>
+            <div class="stat-info">
+                <h3>P&L Global</h3>
+                <p class="stat-value ${stats.totalPnLPercent >= 0 ? 'positive' : 'negative'}">
+                    ${stats.totalPnLPercent >= 0 ? '+' : ''}${stats.totalPnLPercent.toFixed(2)}%
+                </p>
+                <p class="stat-change ${stats.totalPnLPercent >= 0 ? 'positive' : 'negative'}">
+                    ${stats.totalPnL >= 0 ? 'Profit' : 'Perte'}
+                </p>
+            </div>
+        </div>
+    `;
+
+    // Update positions table
+    if (stats.positions.length === 0) {
+        positionsContainer.innerHTML = `
+            <div class="empty-state">
+                <div style="font-size: 64px; margin-bottom: 20px; opacity: 0.3;">💼</div>
+                <h3 style="margin-bottom: 12px;">Portfolio vide</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">
+                    Ajoutez vos premières positions pour suivre votre P&L en temps réel.
+                </p>
+                <button class="btn-primary" onclick="showAddPositionModal()">
+                    ➕ Ajouter une Position
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    positionsContainer.innerHTML = `
+        <div style="margin-bottom: 20px; text-align: right;">
+            <button class="btn-primary" onclick="showAddPositionModal()">
+                ➕ Ajouter une Position
+            </button>
+        </div>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Crypto</th>
+                        <th>Quantité</th>
+                        <th>Prix Moyen</th>
+                        <th>Prix Actuel</th>
+                        <th>Investi</th>
+                        <th>Valeur Actuelle</th>
+                        <th>P&L</th>
+                        <th>P&L %</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${stats.positions.map(pos => `
+                        <tr>
+                            <td>
+                                <div class="crypto-cell">
+                                    <div class="crypto-icon">${pos.crypto.symbol.charAt(0)}</div>
+                                    <div class="crypto-info">
+                                        <div class="crypto-name">${pos.crypto.name}</div>
+                                        <div class="crypto-symbol">${pos.crypto.symbol.toUpperCase()}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>${pos.quantity.toFixed(4)}</td>
+                            <td>$${pos.avgPrice.toFixed(2)}</td>
+                            <td>
+                                <div class="price">$${pos.currentPrice.toFixed(2)}</div>
+                                <div class="price-change ${pos.crypto.priceChange24h >= 0 ? 'positive' : 'negative'}">
+                                    ${pos.crypto.priceChange24h >= 0 ? '+' : ''}${pos.crypto.priceChange24h.toFixed(2)}%
+                                </div>
+                            </td>
+                            <td>$${pos.invested.toFixed(2)}</td>
+                            <td>$${pos.currentValue.toFixed(2)}</td>
+                            <td class="${pos.pnl >= 0 ? 'positive' : 'negative'}">
+                                ${pos.pnl >= 0 ? '+' : ''}$${pos.pnl.toFixed(2)}
+                            </td>
+                            <td>
+                                <span class="score-badge ${pos.pnlPercent >= 10 ? 'excellent' : pos.pnlPercent >= 0 ? 'good' : 'moderate'}">
+                                    ${pos.pnlPercent >= 0 ? '+' : ''}${pos.pnlPercent.toFixed(2)}%
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn-secondary btn-small" onclick="removeFromPortfolio('${pos.crypto.id}')">
+                                    🗑️ Retirer
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function showAddPositionModal() {
+    const db = getCurrentDatabase();
+
+    const modalHtml = `
+        <div id="add-position-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;">
+            <div style="background: var(--bg-card); border-radius: 12px; padding: 30px; max-width: 500px; width: 90%; border: 1px solid var(--border-color);">
+                <h2 style="margin-bottom: 20px;">➕ Ajouter une Position</h2>
+
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; color: var(--text-secondary);">Crypto</label>
+                    <select id="position-crypto" style="width: 100%; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                        <option value="">Sélectionner une crypto...</option>
+                        ${db.map(crypto => `
+                            <option value="${crypto.id}">${crypto.name} (${crypto.symbol.toUpperCase()})</option>
+                        `).join('')}
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; color: var(--text-secondary);">Quantité</label>
+                    <input type="number" id="position-quantity" step="0.0001" placeholder="0.5" style="width: 100%; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                </div>
+
+                <div style="margin-bottom: 30px;">
+                    <label style="display: block; margin-bottom: 8px; color: var(--text-secondary);">Prix d'Achat Moyen (USD)</label>
+                    <input type="number" id="position-price" step="0.01" placeholder="45000.00" style="width: 100%; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                </div>
+
+                <div style="display: flex; gap: 12px;">
+                    <button class="btn-primary" onclick="submitAddPosition()" style="flex: 1;">
+                        ✅ Ajouter
+                    </button>
+                    <button class="btn-secondary" onclick="closeAddPositionModal()" style="flex: 1;">
+                        ❌ Annuler
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeAddPositionModal() {
+    const modal = document.getElementById('add-position-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function submitAddPosition() {
+    const cryptoId = document.getElementById('position-crypto').value;
+    const quantity = parseFloat(document.getElementById('position-quantity').value);
+    const price = parseFloat(document.getElementById('position-price').value);
+
+    if (!cryptoId || !quantity || !price || quantity <= 0 || price <= 0) {
+        showNotification('❌ Veuillez remplir tous les champs avec des valeurs valides', 'error');
+        return;
+    }
+
+    addToPortfolio(cryptoId, quantity, price);
+    closeAddPositionModal();
+}
+
+function loadPortfolioPage() {
+    updatePortfolioDisplay();
+
+    // Auto-refresh every 30 seconds
+    if (typeof portfolioRefreshInterval !== 'undefined') {
+        clearInterval(portfolioRefreshInterval);
+    }
+
+    window.portfolioRefreshInterval = setInterval(() => {
+        if (currentPage === 'portfolio') {
+            updatePortfolioDisplay();
+        }
+    }, 30000);
+}
