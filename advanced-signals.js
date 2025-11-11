@@ -351,20 +351,8 @@ function renderSignalCard(signal) {
 async function showTradePlan(cryptoId) {
     console.log(`🔍 Opening trade plan for crypto ID: ${cryptoId}`);
 
-    // ID mapping for common mismatches (old IDs -> correct IDs)
-    const idMapping = {
-        'polygon': 'matic-network',
-        'lido': 'lido-dao',
-        'fetchai': 'fetch-ai',
-        'synthetix': 'synthetix-network-token',
-        'avalanche': 'avalanche-2',
-        'render': 'render-token',
-        'curve': 'curve-dao-token',
-        'immutable': 'immutable-x'
-    };
-
-    // Try mapped ID first
-    let searchId = idMapping[cryptoId.toLowerCase()] || cryptoId;
+    // Use centralized ID resolver (from utils/crypto-id-resolver.js)
+    const searchId = typeof resolveCryptoId !== 'undefined' ? resolveCryptoId(cryptoId) : cryptoId;
 
     // Try to find by ID first
     let crypto = getCurrentDatabase().find(c => c.id === searchId);
@@ -384,25 +372,13 @@ async function showTradePlan(cryptoId) {
         );
     }
 
-    // Fallback 3: Try to find by symbol from known mapping
-    if (!crypto) {
-        console.log(`⚠️ Partial ID not found, trying symbol mapping...`);
-        const symbolMapping = {
-            'polygon': 'MATIC',
-            'lido': 'LDO',
-            'fetchai': 'FET',
-            'synthetix': 'SNX',
-            'avalanche': 'AVAX',
-            'render': 'RNDR',
-            'curve': 'CRV',
-            'immutable': 'IMX',
-            'optimism': 'OP'
-        };
-
-        const symbol = symbolMapping[cryptoId.toLowerCase()];
-        if (symbol) {
-            crypto = getCurrentDatabase().find(c => c.symbol.toUpperCase() === symbol);
-            if (crypto) console.log(`   ✅ Found by symbol mapping: ${symbol} -> ${crypto.id}`);
+    // Fallback 3: Try to find by symbol using resolver
+    if (!crypto && typeof resolveSymbolToId !== 'undefined') {
+        console.log(`⚠️ Partial ID not found, trying symbol resolution...`);
+        const resolvedId = resolveSymbolToId(cryptoId);
+        if (resolvedId) {
+            crypto = getCurrentDatabase().find(c => c.id === resolvedId);
+            if (crypto) console.log(`   ✅ Found by symbol resolution: ${cryptoId} -> ${resolvedId}`);
         }
     }
 

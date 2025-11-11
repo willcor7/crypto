@@ -305,19 +305,19 @@ const portfolioData = [
         currentPrice: 12.45
     },
     {
-        crypto: 'immutable',
+        crypto: 'immutable-x',
         quantity: 3200,
         buyPrice: 2.10,
         currentPrice: 2.87
     },
     {
-        crypto: 'render',
+        crypto: 'render-token',
         quantity: 780,
         buyPrice: 7.20,
         currentPrice: 8.92
     },
     {
-        crypto: 'curve',
+        crypto: 'curve-dao-token',
         quantity: 8500,
         buyPrice: 0.95,
         currentPrice: 1.12
@@ -350,7 +350,7 @@ const activeSignals = [
     },
     {
         timestamp: new Date(Date.now() - 14400000).toISOString(),
-        crypto: 'immutable',
+        crypto: 'immutable-x',
         signal: 'STRONG BUY',
         type: 'Entry',
         price: 2.87,
@@ -361,7 +361,7 @@ const activeSignals = [
     },
     {
         timestamp: new Date(Date.now() - 21600000).toISOString(),
-        crypto: 'fetchai',
+        crypto: 'fetch-ai',
         signal: 'STRONG BUY',
         type: 'Entry',
         price: 1.98,
@@ -372,7 +372,7 @@ const activeSignals = [
     },
     {
         timestamp: new Date(Date.now() - 28800000).toISOString(),
-        crypto: 'curve',
+        crypto: 'curve-dao-token',
         signal: 'STRONG BUY',
         type: 'Entry',
         price: 1.12,
@@ -394,7 +394,7 @@ const activeSignals = [
     },
     {
         timestamp: new Date(Date.now() - 43200000).toISOString(),
-        crypto: 'render',
+        crypto: 'render-token',
         signal: 'BUY',
         type: 'Entry',
         price: 8.92,
