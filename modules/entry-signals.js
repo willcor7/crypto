@@ -11,7 +11,7 @@ class EntryConfluenceEngine {
         this.tech = technicalData;
         this.score = 0;
         this.confirmations = [];
-        this.maxScore = 155; // Updated: 100 + 20 (Fib) + 15 (VP) + 20 (Liquidity)
+        this.maxScore = 175; // Updated: 100 + 20 (Fib) + 15 (VP) + 20 (Liquidity) + 20 (Order Flow)
     }
 
     /**
@@ -72,11 +72,18 @@ class EntryConfluenceEngine {
             this.confirmations.push(vpScore);
         }
 
-        // 8. Liquidity Analysis (20 points) - NEW
+        // 8. Liquidity Analysis (20 points)
         const liquidityScore = this.evaluateLiquidity();
         this.score += liquidityScore.points;
         if (liquidityScore.confirmed) {
             this.confirmations.push(liquidityScore);
+        }
+
+        // 9. Order Flow (20 points) - NEW
+        const orderFlowScore = this.evaluateOrderFlow();
+        this.score += orderFlowScore.points;
+        if (orderFlowScore.confirmed) {
+            this.confirmations.push(orderFlowScore);
         }
 
         return this.getEntrySignal();
@@ -729,6 +736,126 @@ class EntryConfluenceEngine {
     }
 
     /**
+     * Evaluate Order Flow (CVD, Delta, Divergences)
+     * Max: 20 points
+     */
+    evaluateOrderFlow() {
+        let points = 0;
+        let confirmed = false;
+        let reason = '';
+        let icon = '❌';
+
+        // Check if Order Flow data is available
+        if (!this.tech.orderFlow) {
+            return {
+                category: 'Order Flow',
+                points: 0,
+                confirmed: false,
+                reason: 'Analyse Order Flow non disponible',
+                icon: '⚠️',
+                weight: 20
+            };
+        }
+
+        const of = this.tech.orderFlow;
+        const metrics = of.metrics || {};
+
+        // SCENARIO 1: Bullish Divergence + Strong Buy Imbalance (20 pts - HIGHEST)
+        if (metrics.hasDivergence &&
+            metrics.divergenceType === 'BULLISH_DIVERGENCE' &&
+            (metrics.imbalanceType === 'STRONG_BUY' || metrics.imbalanceType === 'BUY')) {
+            points = 20;
+            confirmed = true;
+            reason = `🔥 DIVERGENCE HAUSSIÈRE + Imbalance acheteur (${metrics.imbalanceRatio.toFixed(1)}%) - Signal FORT`;
+            icon = '✅';
+        }
+        // SCENARIO 2: Strong Bullish CVD Trend + Buy Imbalance (18 pts)
+        else if ((metrics.cvdTrend === 'STRONG_BULLISH' || metrics.cvdTrend === 'BULLISH') &&
+                 (metrics.imbalanceType === 'STRONG_BUY' || metrics.imbalanceType === 'BUY')) {
+            points = 18;
+            confirmed = true;
+            reason = `CVD trend haussier (${metrics.cvdStrength.toFixed(1)}%) + Imbalance acheteur (${metrics.imbalanceRatio.toFixed(1)}%)`;
+            icon = '✅';
+        }
+        // SCENARIO 3: Bullish Divergence (15 pts)
+        else if (metrics.hasDivergence && metrics.divergenceType === 'BULLISH_DIVERGENCE') {
+            points = 15;
+            confirmed = true;
+            reason = `Divergence haussière détectée - Prix baisse, CVD monte`;
+            icon = '✅';
+        }
+        // SCENARIO 4: Strong Buy Imbalance (12 pts)
+        else if (metrics.imbalanceType === 'STRONG_BUY') {
+            points = 12;
+            confirmed = true;
+            reason = `Forte pression acheteuse (${metrics.imbalanceRatio.toFixed(1)}% buy volume)`;
+            icon = '✅';
+        }
+        // SCENARIO 5: Bullish CVD Trend (10 pts)
+        else if (metrics.cvdTrend === 'STRONG_BULLISH' || metrics.cvdTrend === 'BULLISH') {
+            points = 10;
+            confirmed = true;
+            reason = `CVD trend haussier - Accumulation progressive (${metrics.cvdStrength.toFixed(1)}%)`;
+            icon = '✅';
+        }
+        // SCENARIO 6: Buy Imbalance (8 pts)
+        else if (metrics.imbalanceType === 'BUY') {
+            points = 8;
+            confirmed = false;
+            reason = `Pression acheteuse modérée (${metrics.imbalanceRatio.toFixed(1)}% buy)`;
+            icon = '🟡';
+        }
+        // SCENARIO 7: Neutral but monitoring (5 pts)
+        else if (metrics.cvdTrend === 'NEUTRAL') {
+            points = 5;
+            confirmed = false;
+            reason = `Ordre Flow neutre - Équilibre acheteurs/vendeurs`;
+            icon = '➡️';
+        }
+        // SCENARIO 8: Bearish signals (0-3 pts)
+        else if (metrics.cvdTrend === 'BEARISH' || metrics.cvdTrend === 'STRONG_BEARISH' ||
+                 metrics.imbalanceType === 'SELL' || metrics.imbalanceType === 'STRONG_SELL') {
+            points = 0;
+            confirmed = false;
+            reason = `⚠️ Ordre Flow baissier - Distribution ou pression vendeuse`;
+            icon = '🔴';
+        }
+        // SCENARIO 9: Bearish Divergence (NEGATIVE signal)
+        else if (metrics.hasDivergence && metrics.divergenceType === 'BEARISH_DIVERGENCE') {
+            points = 0;
+            confirmed = false;
+            reason = `🔻 DIVERGENCE BAISSIÈRE - Prix monte, CVD baisse`;
+            icon = '❌';
+        }
+        // Default
+        else {
+            points = 3;
+            confirmed = false;
+            reason = `Ordre Flow non concluant`;
+            icon = '⚠️';
+        }
+
+        return {
+            category: 'Order Flow',
+            points: points,
+            confirmed: confirmed,
+            reason: reason,
+            icon: icon,
+            weight: 20,
+            orderFlowData: {
+                cvdTrend: metrics.cvdTrend,
+                cvdStrength: metrics.cvdStrength,
+                hasDivergence: metrics.hasDivergence,
+                divergenceType: metrics.divergenceType,
+                imbalanceType: metrics.imbalanceType,
+                imbalanceRatio: metrics.imbalanceRatio,
+                signal: metrics.signal,
+                confidence: metrics.confidence
+            }
+        };
+    }
+
+    /**
      * Get final entry signal based on confluence score
      */
     getEntrySignal() {
@@ -785,7 +912,7 @@ class EntryConfluenceEngine {
             maxScore: this.maxScore,
             scorePercent: scorePercent.toFixed(1),
             confirmations: confirmationCount,
-            maxConfirmations: 8, // Updated: 5 base + 3 new (Fib + VP + Liquidity)
+            maxConfirmations: 9, // Updated: 5 base + 4 new (Fib + VP + Liquidity + Order Flow)
             confidence: confidence.toFixed(0),
             action: action,
             color: color,
@@ -813,8 +940,9 @@ class EntryConfluenceEngine {
         const fib = this.evaluateFibonacciClusters();
         const vp = this.evaluateVolumeProfile();
         const liquidity = this.evaluateLiquidity();
+        const orderFlow = this.evaluateOrderFlow();
 
-        return [structure, zone, volume, fundamental, rsi, fib, vp, liquidity];
+        return [structure, zone, volume, fundamental, rsi, fib, vp, liquidity, orderFlow];
     }
 }
 

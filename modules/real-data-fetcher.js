@@ -285,6 +285,7 @@ class HybridDataBuilder {
         const fibonacci = this.analyzeFibonacci(ohlcv1h, structure.swings);
         const volumeProfile = this.analyzeVolumeProfile(ohlcv1h);
         const liquidityPools = this.analyzeLiquidity(ohlcv1h, structure.swings);
+        const orderFlow = this.analyzeOrderFlow(ohlcv1h);
 
         return {
             ohlcv: {
@@ -301,6 +302,7 @@ class HybridDataBuilder {
             fibonacci: fibonacci,
             volumeProfile: volumeProfile,
             liquidityPools: liquidityPools,
+            orderFlow: orderFlow,
             dataSource: ohlcv1h.length > 30 ? 'REAL' : 'SIMULATED',
             generated: Date.now()
         };
@@ -446,6 +448,42 @@ class HybridDataBuilder {
 
         const liquidityMapper = new LiquidityMapper(ohlcv, swings);
         return liquidityMapper.detectLiquidityPools();
+    }
+
+    /**
+     * Analyze Order Flow (CVD, Delta, Divergences)
+     */
+    analyzeOrderFlow(ohlcv) {
+        if (typeof OrderFlowAnalyzer === 'undefined' || !ohlcv || ohlcv.length < 10) {
+            return {
+                metrics: {
+                    cvdTrend: 'UNKNOWN',
+                    cvdStrength: 0,
+                    hasDivergence: false,
+                    divergenceType: null,
+                    imbalanceType: 'NEUTRAL',
+                    imbalanceRatio: 50,
+                    signal: 'NEUTRAL',
+                    confidence: 0
+                },
+                summary: 'Données insuffisantes pour analyse Order Flow'
+            };
+        }
+
+        const analyzer = new OrderFlowAnalyzer(ohlcv);
+        const analysis = analyzer.analyze();
+        const metrics = analyzer.getMetrics();
+
+        return {
+            cvd: analysis.cvd,
+            trend: analysis.trend,
+            divergences: analysis.divergences,
+            imbalance: analysis.imbalance,
+            signal: analysis.signal,
+            footprint: analysis.footprint,
+            metrics: metrics,
+            summary: analysis.summary
+        };
     }
 }
 
