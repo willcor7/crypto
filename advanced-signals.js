@@ -433,6 +433,30 @@ async function showTradePlan(cryptoId) {
         }
     }
 
+    // Fallback 6: If live data is enabled but crypto not found, try static database
+    if (!crypto && typeof liveDataEnabled !== 'undefined' && liveDataEnabled && typeof cryptoDatabase !== 'undefined') {
+        console.log(`⚠️ Not found in live data, trying static database as fallback...`);
+
+        // Try exact ID match in static DB
+        crypto = cryptoDatabase.find(c => c.id === searchId || c.id === cryptoId);
+
+        // Try symbol match in static DB
+        if (!crypto) {
+            const cachedSignal = advancedSignalsCache.get(searchId) || advancedSignalsCache.get(cryptoId);
+            if (cachedSignal && cachedSignal.crypto) {
+                const symbol = cachedSignal.crypto.symbol;
+                crypto = cryptoDatabase.find(c => c.symbol.toUpperCase() === symbol.toUpperCase());
+                if (crypto) console.log(`   ✅ Found in static DB by symbol: ${symbol} -> ${crypto.id}`);
+            }
+        } else {
+            console.log(`   ✅ Found in static DB: ${crypto.symbol} (${crypto.name})`);
+        }
+
+        if (crypto) {
+            console.log(`   ℹ️ Using static data for ${crypto.symbol} (not in live top 100)`);
+        }
+    }
+
     if (!crypto) {
         console.error(`❌ Crypto not found in database: ${cryptoId}`);
         console.error(`   Searched ID: ${searchId}`);
