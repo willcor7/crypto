@@ -284,6 +284,7 @@ class HybridDataBuilder {
         const rsi = this.calculateRSI(ohlcv1h);
         const fibonacci = this.analyzeFibonacci(ohlcv1h, structure.swings);
         const volumeProfile = this.analyzeVolumeProfile(ohlcv1h);
+        const liquidityPools = this.analyzeLiquidity(ohlcv1h, structure.swings);
 
         return {
             ohlcv: {
@@ -299,6 +300,7 @@ class HybridDataBuilder {
             rsi: rsi,
             fibonacci: fibonacci,
             volumeProfile: volumeProfile,
+            liquidityPools: liquidityPools,
             dataSource: ohlcv1h.length > 30 ? 'REAL' : 'SIMULATED',
             generated: Date.now()
         };
@@ -432,6 +434,18 @@ class HybridDataBuilder {
 
         const vpAnalyzer = new AdvancedVolumeProfile(ohlcv);
         return vpAnalyzer.buildProfile();
+    }
+
+    /**
+     * Analyze Liquidity Pools and Sweeps
+     */
+    analyzeLiquidity(ohlcv, swings) {
+        if (typeof LiquidityMapper === 'undefined' || !swings || swings.length < 2) {
+            return [];
+        }
+
+        const liquidityMapper = new LiquidityMapper(ohlcv, swings);
+        return liquidityMapper.detectLiquidityPools();
     }
 }
 

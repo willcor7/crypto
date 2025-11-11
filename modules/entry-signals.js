@@ -11,7 +11,7 @@ class EntryConfluenceEngine {
         this.tech = technicalData;
         this.score = 0;
         this.confirmations = [];
-        this.maxScore = 135; // Updated: 100 + 20 (Fib) + 15 (VP)
+        this.maxScore = 155; // Updated: 100 + 20 (Fib) + 15 (VP) + 20 (Liquidity)
     }
 
     /**
@@ -70,6 +70,13 @@ class EntryConfluenceEngine {
         this.score += vpScore.points;
         if (vpScore.confirmed) {
             this.confirmations.push(vpScore);
+        }
+
+        // 8. Liquidity Analysis (20 points) - NEW
+        const liquidityScore = this.evaluateLiquidity();
+        this.score += liquidityScore.points;
+        if (liquidityScore.confirmed) {
+            this.confirmations.push(liquidityScore);
         }
 
         return this.getEntrySignal();
@@ -609,6 +616,119 @@ class EntryConfluenceEngine {
     }
 
     /**
+     * Evaluate Liquidity (Stop-loss clustering & Liquidity sweeps)
+     * Max: 20 points
+     * This is CRITICAL for crypto markets where manipulation is common
+     */
+    evaluateLiquidity() {
+        let points = 0;
+        let confirmed = false;
+        let reason = '';
+        let icon = '❌';
+
+        // Check if liquidity mapping is available
+        if (!this.tech.liquidityPools || !this.tech.ohlcv || !this.tech.swings) {
+            return {
+                category: 'Liquidity',
+                points: 0,
+                confirmed: false,
+                reason: 'Analyse de liquidité non disponible',
+                icon: '⚠️',
+                weight: 20
+            };
+        }
+
+        const currentPrice = this.crypto.price;
+        const pools = this.tech.liquidityPools;
+        const lastCandle = this.tech.ohlcv[this.tech.ohlcv.length - 1];
+
+        // Find nearest liquidity pool
+        const nearestPool = pools.find(p => p.distancePercent !== undefined);
+
+        if (!nearestPool) {
+            return {
+                category: 'Liquidity',
+                points: 5,
+                confirmed: false,
+                reason: 'Pas de liquidity pool significatif à proximité',
+                icon: '⚠️',
+                weight: 20
+            };
+        }
+
+        const distancePercent = nearestPool.distancePercent;
+
+        // Load LiquidityMapper for sweep detection
+        const mapper = new LiquidityMapper(this.tech.ohlcv, this.tech.swings);
+        const sweep = mapper.detectLiquiditySweep(nearestPool, lastCandle);
+
+        // SCENARIO 1: Liquidity Sweep JUST happened (HIGHEST PRIORITY)
+        // This is a reversal setup - institutional manipulation detected
+        if (sweep.swept && sweep.confidence === 'HIGH') {
+            if (sweep.signal === 'BULLISH_REVERSAL') {
+                points = 20;
+                confirmed = true;
+                reason = `🔥 LIQUIDITY SWEEP! Prix balayé à $${nearestPool.price.toFixed(2)} puis rejeté - Reversal haussier probable`;
+                icon = '✅';
+            } else if (sweep.signal === 'BEARISH_REVERSAL') {
+                // For LONG signals, bearish reversal is negative
+                points = 0;
+                reason = `⚠️ Liquidity sweep baissier détecté à $${nearestPool.price.toFixed(2)} - Éviter long`;
+                icon = '❌';
+            }
+        }
+        // SCENARIO 2: Price approaching MAJOR liquidity (Magnet Effect)
+        // Smart money will likely target this liquidity
+        else if (distancePercent < 2 && nearestPool.priority >= 7) {
+            points = 15;
+            confirmed = true;
+            reason = `Prix attiré vers liquidity pool ($${nearestPool.price.toFixed(2)}, ${nearestPool.reason}) - ${distancePercent.toFixed(1)}% away`;
+            icon = '✅';
+        }
+        // SCENARIO 3: Price AT liquidity pool (Danger/Opportunity Zone)
+        // Could sweep and reverse, or break through
+        else if (distancePercent < 1) {
+            points = 10;
+            confirmed = true;
+            reason = `Prix SUR liquidity pool ($${nearestPool.price.toFixed(2)}) - Watch for sweep or breakout`;
+            icon = '⚠️';
+        }
+        // SCENARIO 4: Price near moderate liquidity
+        else if (distancePercent < 3 && nearestPool.priority >= 5) {
+            points = 8;
+            reason = `Liquidity pool à proximité ($${nearestPool.price.toFixed(2)}, ${nearestPool.reason})`;
+            icon = '⚠️';
+        }
+        // SCENARIO 5: Price between pools (Neutral Zone)
+        // No immediate liquidity concern
+        else if (distancePercent > 5) {
+            points = 5;
+            reason = `Prix loin des liquidity pools (${distancePercent.toFixed(1)}%)`;
+            icon = '⚠️';
+        }
+        // SCENARIO 6: Default case
+        else {
+            points = 3;
+            reason = `Nearest liquidity: ${nearestPool.reason} at $${nearestPool.price.toFixed(2)}`;
+            icon = '⚠️';
+        }
+
+        return {
+            category: 'Liquidity',
+            points: points,
+            confirmed: confirmed,
+            reason: reason,
+            icon: icon,
+            weight: 20,
+            liquidityData: {
+                nearestPool: nearestPool,
+                sweep: sweep,
+                allPools: pools.slice(0, 5)  // Top 5 for reference
+            }
+        };
+    }
+
+    /**
      * Get final entry signal based on confluence score
      */
     getEntrySignal() {
@@ -665,7 +785,7 @@ class EntryConfluenceEngine {
             maxScore: this.maxScore,
             scorePercent: scorePercent.toFixed(1),
             confirmations: confirmationCount,
-            maxConfirmations: 7, // Updated: 5 base + 2 new (Fib + VP)
+            maxConfirmations: 8, // Updated: 5 base + 3 new (Fib + VP + Liquidity)
             confidence: confidence.toFixed(0),
             action: action,
             color: color,
@@ -690,8 +810,11 @@ class EntryConfluenceEngine {
         const volume = this.evaluateVolume();
         const fundamental = this.evaluateFundamental();
         const rsi = this.evaluateRSI();
+        const fib = this.evaluateFibonacciClusters();
+        const vp = this.evaluateVolumeProfile();
+        const liquidity = this.evaluateLiquidity();
 
-        return [structure, zone, volume, fundamental, rsi];
+        return [structure, zone, volume, fundamental, rsi, fib, vp, liquidity];
     }
 }
 
