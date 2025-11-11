@@ -62,7 +62,10 @@ class AdvancedSignalsOrchestrator {
                 signal.crypto.technicalZones = {
                     orderBlocks: techData.orderBlocks || [],
                     fvgs: techData.fvgs || [],
-                    swings: techData.swings || []
+                    swings: techData.swings || [],
+                    fibonacci: techData.fibonacci || { clusters: [], allLevels: [] },
+                    volumeProfile: techData.volumeProfile || null,
+                    liquidityPools: techData.liquidityPools || []
                 };
 
                 // Cache signal with timestamp
@@ -136,7 +139,10 @@ class AdvancedSignalsOrchestrator {
                 signal.crypto.technicalZones = {
                     orderBlocks: techData.orderBlocks || [],
                     fvgs: techData.fvgs || [],
-                    swings: techData.swings || []
+                    swings: techData.swings || [],
+                    fibonacci: techData.fibonacci || { clusters: [], allLevels: [] },
+                    volumeProfile: techData.volumeProfile || null,
+                    liquidityPools: techData.liquidityPools || []
                 };
 
                 // Cache signal

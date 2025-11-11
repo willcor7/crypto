@@ -50,7 +50,27 @@ class StopLossCalculator {
                 }
             }
 
-            // Priority 4: Default 2% below entry
+            // Priority 4: Fibonacci cluster below (support)
+            if (!stopLoss) {
+                const fibSupport = this.findFibonacciSupportBelow();
+                if (fibSupport) {
+                    stopLoss = fibSupport.price * 0.995;
+                    reason = `Sous cluster Fibonacci ${fibSupport.hasGoldenRatio ? '(Golden Ratio) ' : ''}($${fibSupport.price.toFixed(2)})`;
+                    method = 'FIBONACCI';
+                }
+            }
+
+            // Priority 5: Liquidity pool below (buy-side liquidity = support)
+            if (!stopLoss) {
+                const liquiditySupport = this.findLiquiditySupportBelow();
+                if (liquiditySupport) {
+                    stopLoss = liquiditySupport.price * 0.995;
+                    reason = `Sous pool de liquidité (${liquiditySupport.reason})`;
+                    method = 'LIQUIDITY';
+                }
+            }
+
+            // Priority 6: Default 2% below entry
             if (!stopLoss) {
                 stopLoss = this.entryPrice * 0.98;
                 reason = 'Stop-loss par défaut (2% sous entrée)';
@@ -141,6 +161,58 @@ class StopLossCalculator {
             fvg.zone.bottom < this.entryPrice &&
             fvg.zone.bottom > this.entryPrice * 0.95
         );
+    }
+
+    findFibonacciSupportBelow() {
+        if (!this.zones.fibonacci || !this.zones.fibonacci.clusters) return null;
+        // Find Fibonacci clusters that are below entry (support)
+        const supportClusters = this.zones.fibonacci.clusters
+            .filter(cluster =>
+                cluster.price < this.entryPrice &&
+                cluster.price > this.entryPrice * 0.90 && // Within 10% below
+                cluster.score >= 70 // Only strong clusters
+            )
+            .sort((a, b) => b.price - a.price); // Closest first
+        return supportClusters[0] || null;
+    }
+
+    findFibonacciResistanceAbove() {
+        if (!this.zones.fibonacci || !this.zones.fibonacci.clusters) return null;
+        // Find Fibonacci clusters that are above entry (resistance)
+        const resistanceClusters = this.zones.fibonacci.clusters
+            .filter(cluster =>
+                cluster.price > this.entryPrice &&
+                cluster.price < this.entryPrice * 1.10 && // Within 10% above
+                cluster.score >= 70 // Only strong clusters
+            )
+            .sort((a, b) => a.price - b.price); // Closest first
+        return resistanceClusters[0] || null;
+    }
+
+    findLiquiditySupportBelow() {
+        if (!this.zones.liquidityPools) return null;
+        // Find liquidity pools below entry price (buy-side liquidity = support)
+        const supportPools = this.zones.liquidityPools
+            .filter(pool =>
+                pool.price < this.entryPrice &&
+                pool.price > this.entryPrice * 0.90 && // Within 10% below
+                pool.priority >= 6 // Only strong liquidity
+            )
+            .sort((a, b) => b.price - a.price); // Closest first
+        return supportPools[0] || null;
+    }
+
+    findLiquidityResistanceAbove() {
+        if (!this.zones.liquidityPools) return null;
+        // Find liquidity pools above entry price (sell-side liquidity = resistance)
+        const resistancePools = this.zones.liquidityPools
+            .filter(pool =>
+                pool.price > this.entryPrice &&
+                pool.price < this.entryPrice * 1.10 && // Within 10% above
+                pool.priority >= 6 // Only strong liquidity
+            )
+            .sort((a, b) => a.price - b.price); // Closest first
+        return resistancePools[0] || null;
     }
 }
 
@@ -267,52 +339,190 @@ class TakeProfitCalculator {
 
     /**
      * Find next resistance level above entry
+     * Priority: Fibonacci Golden Ratio > Liquidity Pools > Volume Profile VAH > Order Blocks > Swings
      */
     findNextResistance() {
-        // Check bearish Order Blocks above entry
+        const candidates = [];
+
+        // Priority 1: Fibonacci clusters above (especially with Golden Ratio)
+        if (this.zones.fibonacci && this.zones.fibonacci.clusters) {
+            this.zones.fibonacci.clusters
+                .filter(cluster =>
+                    cluster.price > this.entryPrice &&
+                    cluster.price < this.entryPrice * 1.15 &&
+                    cluster.score >= 70
+                )
+                .forEach(cluster => {
+                    candidates.push({
+                        price: cluster.price,
+                        priority: cluster.hasGoldenRatio ? 10 : 8,
+                        source: cluster.hasGoldenRatio ? 'Fibonacci Golden Ratio' : 'Fibonacci Cluster'
+                    });
+                });
+        }
+
+        // Priority 2: Liquidity pools (high priority)
+        if (this.zones.liquidityPools) {
+            this.zones.liquidityPools
+                .filter(pool =>
+                    pool.price > this.entryPrice &&
+                    pool.price < this.entryPrice * 1.15 &&
+                    pool.priority >= 6
+                )
+                .forEach(pool => {
+                    candidates.push({
+                        price: pool.price,
+                        priority: 9,
+                        source: 'Liquidity Pool'
+                    });
+                });
+        }
+
+        // Priority 3: Volume Profile VAH (Value Area High)
+        if (this.zones.volumeProfile && this.zones.volumeProfile.vah) {
+            const vah = this.zones.volumeProfile.vah;
+            if (vah > this.entryPrice && vah < this.entryPrice * 1.15) {
+                candidates.push({
+                    price: vah,
+                    priority: 7,
+                    source: 'Volume Profile VAH'
+                });
+            }
+        }
+
+        // Priority 4: Bearish Order Blocks
         if (this.zones.orderBlocks) {
             const obAbove = this.zones.orderBlocks.find(ob =>
                 ob.type === 'BEARISH_OB' &&
                 ob.zone.bottom > this.entryPrice &&
-                ob.zone.bottom < this.entryPrice * 1.15 // Within 15% above
+                ob.zone.bottom < this.entryPrice * 1.15
             );
-            if (obAbove) return obAbove.zone.bottom;
+            if (obAbove) {
+                candidates.push({
+                    price: obAbove.zone.bottom,
+                    priority: 6,
+                    source: 'Order Block'
+                });
+            }
         }
 
-        // Check swing highs above entry
+        // Priority 5: Swing highs
         if (this.zones.swings) {
             const swingHigh = this.zones.swings
                 .filter(s => s.type === 'HIGH' && s.price > this.entryPrice)
                 .sort((a, b) => a.price - b.price)[0];
-            if (swingHigh) return swingHigh.price;
+            if (swingHigh) {
+                candidates.push({
+                    price: swingHigh.price,
+                    priority: 5,
+                    source: 'Swing High'
+                });
+            }
         }
 
-        return null;
+        // Return highest priority candidate (closest to entry if same priority)
+        if (candidates.length === 0) return null;
+
+        candidates.sort((a, b) => {
+            if (a.priority !== b.priority) return b.priority - a.priority; // Higher priority first
+            return a.price - b.price; // Closer first if same priority
+        });
+
+        return candidates[0].price;
     }
 
     /**
      * Find next support level below entry
+     * Priority: Fibonacci Golden Ratio > Liquidity Pools > Volume Profile VAL > Order Blocks > Swings
      */
     findNextSupport() {
-        // Check bullish Order Blocks below entry
+        const candidates = [];
+
+        // Priority 1: Fibonacci clusters below (especially with Golden Ratio)
+        if (this.zones.fibonacci && this.zones.fibonacci.clusters) {
+            this.zones.fibonacci.clusters
+                .filter(cluster =>
+                    cluster.price < this.entryPrice &&
+                    cluster.price > this.entryPrice * 0.85 &&
+                    cluster.score >= 70
+                )
+                .forEach(cluster => {
+                    candidates.push({
+                        price: cluster.price,
+                        priority: cluster.hasGoldenRatio ? 10 : 8,
+                        source: cluster.hasGoldenRatio ? 'Fibonacci Golden Ratio' : 'Fibonacci Cluster'
+                    });
+                });
+        }
+
+        // Priority 2: Liquidity pools (high priority)
+        if (this.zones.liquidityPools) {
+            this.zones.liquidityPools
+                .filter(pool =>
+                    pool.price < this.entryPrice &&
+                    pool.price > this.entryPrice * 0.85 &&
+                    pool.priority >= 6
+                )
+                .forEach(pool => {
+                    candidates.push({
+                        price: pool.price,
+                        priority: 9,
+                        source: 'Liquidity Pool'
+                    });
+                });
+        }
+
+        // Priority 3: Volume Profile VAL (Value Area Low)
+        if (this.zones.volumeProfile && this.zones.volumeProfile.val) {
+            const val = this.zones.volumeProfile.val;
+            if (val < this.entryPrice && val > this.entryPrice * 0.85) {
+                candidates.push({
+                    price: val,
+                    priority: 7,
+                    source: 'Volume Profile VAL'
+                });
+            }
+        }
+
+        // Priority 4: Bullish Order Blocks
         if (this.zones.orderBlocks) {
             const obBelow = this.zones.orderBlocks.find(ob =>
                 ob.type === 'BULLISH_OB' &&
                 ob.zone.top < this.entryPrice &&
                 ob.zone.top > this.entryPrice * 0.85
             );
-            if (obBelow) return obBelow.zone.top;
+            if (obBelow) {
+                candidates.push({
+                    price: obBelow.zone.top,
+                    priority: 6,
+                    source: 'Order Block'
+                });
+            }
         }
 
-        // Check swing lows below entry
+        // Priority 5: Swing lows
         if (this.zones.swings) {
             const swingLow = this.zones.swings
                 .filter(s => s.type === 'LOW' && s.price < this.entryPrice)
                 .sort((a, b) => b.price - a.price)[0];
-            if (swingLow) return swingLow.price;
+            if (swingLow) {
+                candidates.push({
+                    price: swingLow.price,
+                    priority: 5,
+                    source: 'Swing Low'
+                });
+            }
         }
 
-        return null;
+        // Return highest priority candidate (closest to entry if same priority)
+        if (candidates.length === 0) return null;
+
+        candidates.sort((a, b) => {
+            if (a.priority !== b.priority) return b.priority - a.priority; // Higher priority first
+            return b.price - a.price; // Closer first if same priority
+        });
+
+        return candidates[0].price;
     }
 }
 
