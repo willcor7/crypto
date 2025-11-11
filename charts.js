@@ -433,9 +433,26 @@ function createScoreRadarChart(canvasId, crypto) {
 // ===== CORRELATION HEATMAP =====
 function createCorrelationHeatmap(containerId, holdings, cryptoDatabase) {
     const container = document.getElementById(containerId);
-    if (!container) return;
+    if (!container) {
+        console.warn(`[Correlation Heatmap] Container "${containerId}" not found`);
+        return;
+    }
+
+    if (!holdings || holdings.length === 0) {
+        container.innerHTML = '<p style="padding: 20px; text-align: center; color: var(--text-secondary);">Aucune position dans le portfolio</p>';
+        console.warn('[Correlation Heatmap] No holdings provided');
+        return;
+    }
 
     const cryptos = holdings.map(h => cryptoDatabase.find(c => c.id === h.crypto)).filter(c => c);
+
+    if (cryptos.length < 2) {
+        container.innerHTML = '<p style="padding: 20px; text-align: center; color: var(--text-secondary);">Au moins 2 positions requises pour afficher la corrélation</p>';
+        console.warn(`[Correlation Heatmap] Only ${cryptos.length} valid crypto(s) found`);
+        return;
+    }
+
+    console.log(`[Correlation Heatmap] Generating heatmap for ${cryptos.length} cryptos:`, cryptos.map(c => c.symbol).join(', '));
 
     // Generate correlation matrix (simulated)
     const matrix = [];

@@ -264,6 +264,13 @@ document.addEventListener('DOMContentLoaded', function() {
     updateMarketStatus();
     updateWatchlistDisplay();
 
+    // Event delegation for add position button
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.id === 'add-position') {
+            showAddPositionModal();
+        }
+    });
+
     // Auto-refresh every 30 seconds
     setInterval(() => {
         if (currentPage === 'scanner') {
@@ -854,6 +861,8 @@ function loadScoreBreakdown() {
 
 // ===== PAGE: PORTFOLIO =====
 function loadPortfolioPage() {
+    console.log('[Portfolio] Loading portfolio page...', { holdingsCount: portfolioData?.length, dbSize: cryptoDatabase?.length });
+
     const portfolioScoring = new PortfolioScoring(portfolioData, cryptoDatabase);
     const metrics = portfolioScoring.getMetrics();
 
@@ -880,6 +889,7 @@ function loadPortfolioPage() {
 
     // Load correlation heatmap
     setTimeout(() => {
+        console.log('[Portfolio] Loading correlation heatmap...', { portfolioData, cryptoDatabase: cryptoDatabase?.slice(0, 3) });
         createCorrelationHeatmap('correlation-heatmap', portfolioData, cryptoDatabase);
     }, 200);
 
