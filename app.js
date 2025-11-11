@@ -861,9 +861,14 @@ function loadScoreBreakdown() {
 
 // ===== PAGE: PORTFOLIO =====
 function loadPortfolioPage() {
-    console.log('[Portfolio] Loading portfolio page...', { holdingsCount: portfolioData?.length, dbSize: cryptoDatabase?.length });
+    // Initialize portfolio with sample data if empty (first time use)
+    initializePortfolioIfEmpty();
 
-    const portfolioScoring = new PortfolioScoring(portfolioData, cryptoDatabase);
+    // Get portfolio from localStorage (dynamic user portfolio)
+    const userPortfolio = getPortfolioAsArray();
+    console.log('[Portfolio] Loading portfolio page...', { holdingsCount: userPortfolio.length, dbSize: cryptoDatabase?.length });
+
+    const portfolioScoring = new PortfolioScoring(userPortfolio, cryptoDatabase);
     const metrics = portfolioScoring.getMetrics();
 
     // Update summary
@@ -884,17 +889,28 @@ function loadPortfolioPage() {
     // Load allocation chart
     setTimeout(() => {
         if (charts.allocation) charts.allocation.destroy();
-        charts.allocation = createAllocationChart('allocation-chart', portfolioData, cryptoDatabase);
+        charts.allocation = createAllocationChart('allocation-chart', userPortfolio, cryptoDatabase);
     }, 100);
 
     // Load correlation heatmap
     setTimeout(() => {
-        console.log('[Portfolio] Loading correlation heatmap...', { portfolioData, cryptoDatabase: cryptoDatabase?.slice(0, 3) });
-        createCorrelationHeatmap('correlation-heatmap', portfolioData, cryptoDatabase);
+        console.log('[Portfolio] Loading correlation heatmap...', { holdings: userPortfolio, dbSize: cryptoDatabase?.length });
+        createCorrelationHeatmap('correlation-heatmap', userPortfolio, cryptoDatabase);
     }, 200);
 
     // Load alerts
     loadPortfolioAlerts();
+
+    // Auto-refresh portfolio every 30 seconds
+    if (typeof portfolioRefreshInterval !== 'undefined') {
+        clearInterval(portfolioRefreshInterval);
+    }
+
+    window.portfolioRefreshInterval = setInterval(() => {
+        if (currentPage === 'portfolio') {
+            loadPortfolioPage();
+        }
+    }, 30000);
 }
 
 function loadHoldingsTable(positions) {
@@ -1521,6 +1537,48 @@ function savePortfolio(portfolio) {
     }
 }
 
+/**
+ * Initialize portfolio with sample data if empty (first time use)
+ */
+function initializePortfolioIfEmpty() {
+    const portfolio = getPortfolio();
+
+    // If portfolio is empty, initialize with sample data from data.js
+    if (Object.keys(portfolio).length === 0 && typeof portfolioData !== 'undefined') {
+        console.log('[Portfolio] Initializing with sample data...');
+        portfolioData.forEach(pos => {
+            portfolio[pos.crypto] = {
+                quantity: pos.quantity,
+                avgPrice: pos.buyPrice,
+                addedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+        });
+        savePortfolio(portfolio);
+        console.log('[Portfolio] Initialized with', Object.keys(portfolio).length, 'positions');
+    }
+}
+
+/**
+ * Convert localStorage portfolio format to array format for PortfolioScoring
+ * @returns {Array} Holdings array [{crypto: 'id', quantity: X, buyPrice: Y}, ...]
+ */
+function getPortfolioAsArray() {
+    const portfolio = getPortfolio();
+    const holdings = [];
+
+    Object.keys(portfolio).forEach(cryptoId => {
+        const position = portfolio[cryptoId];
+        holdings.push({
+            crypto: cryptoId,
+            quantity: position.quantity,
+            buyPrice: position.avgPrice
+        });
+    });
+
+    return holdings;
+}
+
 function addToPortfolio(cryptoId, quantity, avgPrice) {
     const portfolio = getPortfolio();
 
@@ -1549,7 +1607,9 @@ function addToPortfolio(cryptoId, quantity, avgPrice) {
     }
 
     savePortfolio(portfolio);
-    updatePortfolioDisplay();
+    if (currentPage === 'portfolio') {
+        loadPortfolioPage();
+    }
     showNotification(`✅ Position ajoutée au portfolio`, 'success');
 }
 
@@ -1558,7 +1618,9 @@ function removeFromPortfolio(cryptoId) {
     if (portfolio[cryptoId]) {
         delete portfolio[cryptoId];
         savePortfolio(portfolio);
-        updatePortfolioDisplay();
+        if (currentPage === 'portfolio') {
+            loadPortfolioPage();
+        }
         showNotification(`Position retirée du portfolio`, 'info');
     }
 }
@@ -1609,129 +1671,6 @@ function calculatePortfolioStats() {
         totalPnLPercent,
         positionCount: positions.length
     };
-}
-
-function updatePortfolioDisplay() {
-    const statsContainer = document.getElementById('portfolio-stats');
-    const positionsContainer = document.getElementById('portfolio-positions');
-
-    if (!statsContainer || !positionsContainer) return;
-
-    const stats = calculatePortfolioStats();
-
-    // Update stats cards
-    statsContainer.innerHTML = `
-        <div class="stat-card">
-            <div class="stat-icon ${stats.totalPnL >= 0 ? 'success' : 'danger'}">💰</div>
-            <div class="stat-info">
-                <h3>Valeur Totale</h3>
-                <p class="stat-value">$${stats.totalValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                <p class="stat-change ${stats.totalPnL >= 0 ? 'positive' : 'negative'}">
-                    ${stats.totalPnL >= 0 ? '+' : ''}$${Math.abs(stats.totalPnL).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                </p>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon info">📊</div>
-            <div class="stat-info">
-                <h3>Montant Investi</h3>
-                <p class="stat-value">$${stats.totalInvested.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                <p class="stat-change neutral">${stats.positionCount} position${stats.positionCount > 1 ? 's' : ''}</p>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon ${stats.totalPnLPercent >= 0 ? 'success' : 'danger'}">${stats.totalPnLPercent >= 0 ? '📈' : '📉'}</div>
-            <div class="stat-info">
-                <h3>P&L Global</h3>
-                <p class="stat-value ${stats.totalPnLPercent >= 0 ? 'positive' : 'negative'}">
-                    ${stats.totalPnLPercent >= 0 ? '+' : ''}${stats.totalPnLPercent.toFixed(2)}%
-                </p>
-                <p class="stat-change ${stats.totalPnLPercent >= 0 ? 'positive' : 'negative'}">
-                    ${stats.totalPnL >= 0 ? 'Profit' : 'Perte'}
-                </p>
-            </div>
-        </div>
-    `;
-
-    // Update positions table
-    if (stats.positions.length === 0) {
-        positionsContainer.innerHTML = `
-            <div class="empty-state">
-                <div style="font-size: 64px; margin-bottom: 20px; opacity: 0.3;">💼</div>
-                <h3 style="margin-bottom: 12px;">Portfolio vide</h3>
-                <p style="color: var(--text-secondary); margin-bottom: 24px;">
-                    Ajoutez vos premières positions pour suivre votre P&L en temps réel.
-                </p>
-                <button class="btn-primary" onclick="showAddPositionModal()">
-                    ➕ Ajouter une Position
-                </button>
-            </div>
-        `;
-        return;
-    }
-
-    positionsContainer.innerHTML = `
-        <div style="margin-bottom: 20px; text-align: right;">
-            <button class="btn-primary" onclick="showAddPositionModal()">
-                ➕ Ajouter une Position
-            </button>
-        </div>
-        <div class="table-container">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Crypto</th>
-                        <th>Quantité</th>
-                        <th>Prix Moyen</th>
-                        <th>Prix Actuel</th>
-                        <th>Investi</th>
-                        <th>Valeur Actuelle</th>
-                        <th>P&L</th>
-                        <th>P&L %</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${stats.positions.map(pos => `
-                        <tr>
-                            <td>
-                                <div class="crypto-cell">
-                                    <div class="crypto-icon">${pos.crypto.symbol.charAt(0)}</div>
-                                    <div class="crypto-info">
-                                        <div class="crypto-name">${pos.crypto.name}</div>
-                                        <div class="crypto-symbol">${pos.crypto.symbol.toUpperCase()}</div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>${pos.quantity.toFixed(4)}</td>
-                            <td>$${pos.avgPrice.toFixed(2)}</td>
-                            <td>
-                                <div class="price">$${pos.currentPrice.toFixed(2)}</div>
-                                <div class="price-change ${pos.crypto.priceChange24h >= 0 ? 'positive' : 'negative'}">
-                                    ${pos.crypto.priceChange24h >= 0 ? '+' : ''}${pos.crypto.priceChange24h.toFixed(2)}%
-                                </div>
-                            </td>
-                            <td>$${pos.invested.toFixed(2)}</td>
-                            <td>$${pos.currentValue.toFixed(2)}</td>
-                            <td class="${pos.pnl >= 0 ? 'positive' : 'negative'}">
-                                ${pos.pnl >= 0 ? '+' : ''}$${pos.pnl.toFixed(2)}
-                            </td>
-                            <td>
-                                <span class="score-badge ${pos.pnlPercent >= 10 ? 'excellent' : pos.pnlPercent >= 0 ? 'good' : 'moderate'}">
-                                    ${pos.pnlPercent >= 0 ? '+' : ''}${pos.pnlPercent.toFixed(2)}%
-                                </span>
-                            </td>
-                            <td>
-                                <button class="btn-secondary btn-small" onclick="removeFromPortfolio('${pos.crypto.id}')">
-                                    🗑️ Retirer
-                                </button>
-                            </td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-    `;
 }
 
 function showAddPositionModal() {
@@ -1798,17 +1737,3 @@ function submitAddPosition() {
     closeAddPositionModal();
 }
 
-function loadPortfolioPage() {
-    updatePortfolioDisplay();
-
-    // Auto-refresh every 30 seconds
-    if (typeof portfolioRefreshInterval !== 'undefined') {
-        clearInterval(portfolioRefreshInterval);
-    }
-
-    window.portfolioRefreshInterval = setInterval(() => {
-        if (currentPage === 'portfolio') {
-            updatePortfolioDisplay();
-        }
-    }, 30000);
-}
