@@ -403,11 +403,33 @@ async function showTradePlan(cryptoId) {
     // Fallback 4: Try to find by symbol from cached signal
     if (!crypto) {
         console.log(`⚠️ Symbol mapping not found, trying cache...`);
-        const cachedSignal = advancedSignalsCache.get(cryptoId);
+        const cachedSignal = advancedSignalsCache.get(searchId) || advancedSignalsCache.get(cryptoId);
         if (cachedSignal && cachedSignal.crypto) {
             const symbol = cachedSignal.crypto.symbol;
-            crypto = getCurrentDatabase().find(c => c.symbol.toLowerCase() === symbol.toLowerCase());
-            if (crypto) console.log(`   ✅ Found by cached symbol: ${symbol} -> ${crypto.id}`);
+            crypto = getCurrentDatabase().find(c => c.symbol.toUpperCase() === symbol.toUpperCase());
+            if (crypto) {
+                console.log(`   ✅ Found by cached symbol: ${symbol} -> ${crypto.id}`);
+            } else {
+                console.log(`   ⚠️ Symbol ${symbol} not found in current database`);
+            }
+        }
+    }
+
+    // Fallback 5: Search all cached signals by any ID variation
+    if (!crypto) {
+        console.log(`⚠️ Cache lookup failed, searching all cached signals...`);
+        // Try to find a cached signal that matches any of the ID variations
+        for (const [cachedId, signal] of advancedSignalsCache.entries()) {
+            if (cachedId.toLowerCase().includes(cryptoId.toLowerCase()) ||
+                cryptoId.toLowerCase().includes(cachedId.toLowerCase()) ||
+                cachedId === searchId) {
+                const symbol = signal.crypto.symbol;
+                crypto = getCurrentDatabase().find(c => c.symbol.toUpperCase() === symbol.toUpperCase());
+                if (crypto) {
+                    console.log(`   ✅ Found via cached signal: ${cachedId} -> ${symbol} -> ${crypto.id}`);
+                    break;
+                }
+            }
         }
     }
 
