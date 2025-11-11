@@ -264,9 +264,11 @@ document.addEventListener('DOMContentLoaded', function() {
     updateMarketStatus();
     updateWatchlistDisplay();
 
-    // Event delegation for add position button
+    // Event delegation for add position button (handles clicks on button or its children)
     document.addEventListener('click', function(e) {
-        if (e.target && e.target.id === 'add-position') {
+        const target = e.target.closest('#add-position');
+        if (target) {
+            console.log('[Add Position] Button clicked via delegation');
             showAddPositionModal();
         }
     });
@@ -900,6 +902,26 @@ function loadPortfolioPage() {
 
     // Load alerts
     loadPortfolioAlerts();
+
+    // Attach event listener to add position button (direct attachment as backup)
+    setTimeout(() => {
+        const addPositionBtn = document.getElementById('add-position');
+        if (addPositionBtn) {
+            console.log('[Portfolio] Add position button found, attaching direct listener');
+            // Remove any existing listener first
+            const newBtn = addPositionBtn.cloneNode(true);
+            addPositionBtn.parentNode.replaceChild(newBtn, addPositionBtn);
+            // Attach new listener
+            newBtn.addEventListener('click', function(e) {
+                console.log('[Add Position] Button clicked via direct listener');
+                e.preventDefault();
+                e.stopPropagation();
+                showAddPositionModal();
+            });
+        } else {
+            console.warn('[Portfolio] Add position button NOT found in DOM');
+        }
+    }, 300);
 
     // Auto-refresh portfolio every 30 seconds
     if (typeof portfolioRefreshInterval !== 'undefined') {
@@ -1674,7 +1696,9 @@ function calculatePortfolioStats() {
 }
 
 function showAddPositionModal() {
+    console.log('[Add Position] showAddPositionModal() called');
     const db = getCurrentDatabase();
+    console.log('[Add Position] Database loaded:', db?.length, 'cryptos');
 
     const modalHtml = `
         <div id="add-position-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;">
@@ -1724,15 +1748,20 @@ function closeAddPositionModal() {
 }
 
 function submitAddPosition() {
+    console.log('[Add Position] submitAddPosition() called');
     const cryptoId = document.getElementById('position-crypto').value;
     const quantity = parseFloat(document.getElementById('position-quantity').value);
     const price = parseFloat(document.getElementById('position-price').value);
 
+    console.log('[Add Position] Form values:', { cryptoId, quantity, price });
+
     if (!cryptoId || !quantity || !price || quantity <= 0 || price <= 0) {
+        console.warn('[Add Position] Validation failed');
         showNotification('❌ Veuillez remplir tous les champs avec des valeurs valides', 'error');
         return;
     }
 
+    console.log('[Add Position] Validation passed, adding to portfolio...');
     addToPortfolio(cryptoId, quantity, price);
     closeAddPositionModal();
 }
